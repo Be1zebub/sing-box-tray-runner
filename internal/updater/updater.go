@@ -23,6 +23,9 @@ const (
 	// 2021, so pinning is low-maintenance in practice.
 	wintunDownloadURL = "https://www.wintun.net/builds/wintun-0.14.1.zip"
 	wintunZipDllEntry = "wintun/bin/amd64/wintun.dll"
+
+	downloadRetries    = 3
+	downloadRetryDelay = 3 * time.Second
 )
 
 // Release is a subset of a GitHub release relevant to the updater.
@@ -158,47 +161,74 @@ func httpGetAsset(url string) (io.ReadCloser, error) {
 	return resp.Body, nil
 }
 
-// download fetches url into a new temp file and returns its path.
+// withRetry runs fn up to downloadRetries times, pausing downloadRetryDelay
+// between attempts, and returns the last error if every attempt fails.
+func withRetry(fn func() error) error {
+	var err error
+	for attempt := 1; attempt <= downloadRetries; attempt++ {
+		if err = fn(); err == nil {
+			return nil
+		}
+		if attempt < downloadRetries {
+			time.Sleep(downloadRetryDelay)
+		}
+	}
+	return err
+}
+
+// download fetches url into a new temp file and returns its path, retrying
+// on failure (including a transfer that starts but drops mid-download).
 func download(url string) (string, error) {
-	body, err := httpGetAsset(url)
+	var path string
+	err := withRetry(func() error {
+		body, err := httpGetAsset(url)
+		if err != nil {
+			return err
+		}
+		defer body.Close()
+
+		tmp, err := os.CreateTemp("", "sing-box-*.zip")
+		if err != nil {
+			return fmt.Errorf("create temp file: %w", err)
+		}
+		defer tmp.Close()
+
+		if _, err := io.Copy(tmp, body); err != nil {
+			os.Remove(tmp.Name())
+			return fmt.Errorf("write downloaded asset: %w", err)
+		}
+		path = tmp.Name()
+		return nil
+	})
 	if err != nil {
 		return "", err
 	}
-	defer body.Close()
-
-	tmp, err := os.CreateTemp("", "sing-box-*.zip")
-	if err != nil {
-		return "", fmt.Errorf("create temp file: %w", err)
-	}
-	defer tmp.Close()
-
-	if _, err := io.Copy(tmp, body); err != nil {
-		os.Remove(tmp.Name())
-		return "", fmt.Errorf("write downloaded asset: %w", err)
-	}
-	return tmp.Name(), nil
+	return path, nil
 }
 
 // DownloadFile fetches url and writes it to destPath, overwriting any
-// existing file there.
+// existing file there, retrying on failure (including a transfer that starts
+// but drops mid-download).
 func DownloadFile(url, destPath string) error {
-	body, err := httpGetAsset(url)
-	if err != nil {
-		return err
-	}
-	defer body.Close()
+	return withRetry(func() error {
+		body, err := httpGetAsset(url)
+		if err != nil {
+			return err
+		}
+		defer body.Close()
 
-	out, err := os.Create(destPath)
-	if err != nil {
-		return fmt.Errorf("create %s: %w", destPath, err)
-	}
-	defer out.Close()
+		out, err := os.Create(destPath)
+		if err != nil {
+			return fmt.Errorf("create %s: %w", destPath, err)
+		}
+		defer out.Close()
 
-	if _, err := io.Copy(out, body); err != nil {
-		os.Remove(destPath)
-		return fmt.Errorf("write %s: %w", destPath, err)
-	}
-	return nil
+		if _, err := io.Copy(out, body); err != nil {
+			os.Remove(destPath)
+			return fmt.Errorf("write %s: %w", destPath, err)
+		}
+		return nil
+	})
 }
 
 // DownloadWintunDll downloads the official wintun.dll release zip and
