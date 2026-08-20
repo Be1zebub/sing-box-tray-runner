@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # full history/tags, needed to diff against the previous tag below
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -20,6 +22,23 @@ jobs:
         env:
           VERSION: ${{ github.ref_name }}
         run: ./scripts/build.sh
+      - name: Generate changelog
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 "${{ github.ref_name }}^" 2>/dev/null || echo "")
+          {
+            if [ -n "$PREV_TAG" ]; then
+              echo "## Changelog ($PREV_TAG...${{ github.ref_name }})"
+              echo
+              git log "$PREV_TAG..${{ github.ref_name }}" --no-merges --pretty=format:'- %s (%h)'
+              echo
+              echo
+              echo "**Full diff**: https://github.com/${{ github.repository }}/compare/$PREV_TAG...${{ github.ref_name }}"
+            else
+              echo "## Changelog"
+              echo
+              git log "${{ github.ref_name }}" --no-merges --pretty=format:'- %s (%h)'
+            fi
+          } > CHANGELOG_RELEASE.md
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -27,4 +46,4 @@ jobs:
           gh release create "${{ github.ref_name }}" \
             build/sing_box_tray_runner.exe \
             --title "${{ github.ref_name }}" \
-            --generate-notes
+            --notes-file CHANGELOG_RELEASE.md
