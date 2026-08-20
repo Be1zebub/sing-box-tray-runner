@@ -19,7 +19,7 @@ A minimal Windows system tray launcher for [sing-box](https://sing-box.sagernet.
 - Autostart via the registry `Run` key (Task Scheduler with `/RL HIGHEST` only for TUN mode, which needs silent elevation), toggleable from the tray menu (checkbox reflects actual state) or Settings
 - Single instance enforced via named kernel mutex
 - **Updates** tray submenu — auto-updates both the tray launcher itself and the `sing-box` binary from GitHub Releases, each with its own auto-update toggle (on by default); sing-box also has a stable/pre-release channel toggle
-- First-run check — offers to download `sing-box.exe` and `wintun.dll` on startup if either is missing at its configured path
+- First-run check — on startup, repoints `sing_box_path`/`wintun_dll_path`/the active config at a same-named file in the exe's folder if the configured path no longer exists (e.g. after moving the install); if still missing, offers to download `sing-box.exe`/`wintun.dll`, or warns if no config file can be found
 - **Languages** tray submenu — switch the UI language live, no restart, in addition to auto-detecting it from the Windows locale
 - UI in English, Russian, or Ukrainian
 - **About** tray menu item — shows the tray launcher and sing-box versions plus a clickable link to the project repository
@@ -38,7 +38,7 @@ Only the Go toolchain is needed, on either host platform — no C compiler, no W
 
 - Windows 10/11 x64
 - [sing-box](https://github.com/SagerNet/sing-box) binary — auto-downloadable on first run if missing
-- [wintun.dll](https://www.wintun.net/) — required only for TUN mode; auto-downloadable on first run if missing
+- [wintun.dll](https://www.wintun.net/) — required only for TUN mode; auto-downloadable on first run if missing, or manually from the same link if the automatic download fails
 - Internet access to `api.github.com`/`github.com` — required for the **Updates** feature and the first-run sing-box download; `www.wintun.net` is required for the first-run wintun.dll download. Everything else works fully offline
 
 ## Installation
@@ -69,7 +69,7 @@ Only the Go toolchain is needed, on either host platform — no C compiler, no W
     "listen_port": 2080
   },
   "update": {
-    "channel": "stable",
+    "channel": "alpha",
     "auto_update": true
   },
   "launcher_update": {
@@ -122,7 +122,7 @@ The tray menu has an **Updates** submenu with two independent sections, both fet
 - **sing-box-tray** (the tray launcher itself) — **Check for Updates** downloads the latest release of this project, swaps it into place, and relaunches. **Auto-update** (checkbox, also in Settings) skips the confirmation prompt on startup and does this silently — if sing-box happens to be running, it's stopped first (otherwise it would be orphaned once the old tray process exits) and not restarted automatically after the relaunch.
 - **sing-box** — same idea as before: **Check for Updates**, plus **Auto-update** and **Use pre-release versions** checkboxes (also duplicated in Settings). Updates install into a tray-managed `sing-box/<version>/` folder next to the executable; `sing_box_path` is switched to point at the new version automatically, and older versions are removed. With auto-update on, a running sing-box is restarted automatically after an update; with it off, the tray only toasts that an update is available and installs on the next manual "Check for Updates" click.
 
-Both sections check once on startup (toast-only unless auto-update is on) and on demand via their "Check for Updates" item.
+Both sections check once on startup, then again every 6 hours for as long as the tray keeps running (toast-only unless auto-update is on), and on demand via their "Check for Updates" item.
 
 ### Localization
 

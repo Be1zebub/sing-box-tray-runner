@@ -18,10 +18,11 @@ const (
 	apiBaseURL = "https://api.github.com"
 	userAgent  = "sing-box-tray"
 
-	// wintunDownloadURL points at a specific wintun.net release rather than a
+	// WintunDownloadURL points at a specific wintun.net release rather than a
 	// "latest" alias (the site doesn't offer one) — wintun.dll last changed in
-	// 2021, so pinning is low-maintenance in practice.
-	wintunDownloadURL = "https://www.wintun.net/builds/wintun-0.14.1.zip"
+	// 2021, so pinning is low-maintenance in practice. Exported so callers can
+	// point the user at it for a manual download if the automatic one fails.
+	WintunDownloadURL = "https://www.wintun.net/builds/wintun-0.14.1.zip"
 	wintunZipDllEntry = "wintun/bin/amd64/wintun.dll"
 
 	downloadRetries    = 3
@@ -234,7 +235,7 @@ func DownloadFile(url, destPath string) error {
 // DownloadWintunDll downloads the official wintun.dll release zip and
 // extracts the amd64 build to destPath.
 func DownloadWintunDll(destPath string) error {
-	zipPath, err := download(wintunDownloadURL)
+	zipPath, err := download(WintunDownloadURL)
 	if err != nil {
 		return err
 	}

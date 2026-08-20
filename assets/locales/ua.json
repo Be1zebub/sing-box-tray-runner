@@ -38,6 +38,8 @@
   "dialog_version_unknown": "немає",
   "dialog_missing_sing_box_fmt": "Файл sing-box.exe не знайдено за шляхом:\n%s\n\nЗавантажити останню версію зараз?",
   "dialog_missing_wintun_fmt": "Файл wintun.dll не знайдено за шляхом:\n%s\n\nВін потрібен для режиму TUN. Завантажити його зараз?",
+  "dialog_wintun_manual_fmt": "Не вдалося завантажити автоматично: %s\n\nЗавантажте wintun.dll вручну за посиланням:\n%s\n\nПотім розмістіть файл wintun.dll у папці з застосунком, за шляхом:\n%s",
+  "dialog_missing_config_fmt": "Не знайдено файл конфігурації sing-box за шляхом:\n%s\n\nРозмістіть файл конфігурації там, або оберіть інший у налаштуваннях.",
   "about_sing_box_version_fmt": "Версія %s: %s",
 
   "settings_title": "sing-box-tray — Налаштування",

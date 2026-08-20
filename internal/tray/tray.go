@@ -46,6 +46,10 @@ const (
 	launcherRepo      = "sing-box-tray-runner"
 	launcherAssetName = "sing_box_tray_runner.exe"
 
+	// updateCheckInterval controls how often the periodic background check
+	// re-runs after the startup check in OnReady.
+	updateCheckInterval = 6 * time.Hour
+
 	// languagesMenuTitle is deliberately not translated — it's the control
 	// that changes the language, so it must stay findable regardless of the
 	// current UI language. Same reasoning for the language names themselves:
@@ -248,6 +252,21 @@ func (a *App) OnReady() {
 
 	go a.checkSingBoxUpdate(false)
 	go a.checkLauncherUpdate(false)
+	go a.periodicUpdateChecks()
+}
+
+// periodicUpdateChecks re-runs the non-interactive sing-box/launcher update
+// checks every updateCheckInterval, so a tray left running for days still
+// picks up new releases without a restart. Each check behaves exactly like
+// the startup check: silent install if the relevant AutoUpdate setting is
+// on, otherwise just a toast.
+func (a *App) periodicUpdateChecks() {
+	ticker := time.NewTicker(updateCheckInterval)
+	defer ticker.Stop()
+	for range ticker.C {
+		a.checkSingBoxUpdate(false)
+		a.checkLauncherUpdate(false)
+	}
 }
 
 func (a *App) OnExit() {
@@ -581,18 +600,32 @@ func (a *App) managedSingBoxRoot() string {
 	return filepath.Join(a.exeDir, "sing-box")
 }
 
-// checkFirstRunDeps checks whether sing-box.exe and wintun.dll exist at their
-// configured paths and offers to download whichever is missing. Runs on every
-// startup, but is only ever actionable on a fresh install (or if the user
-// deleted one of the files) since both checks are no-ops once the files exist.
+// checkFirstRunDeps first reconciles sing_box_path, wintun_dll_path, and the
+// active config against exeDir (see config.ReconcilePaths — this recovers
+// automatically if the tray was moved to a new folder alongside its
+// companion files, e.g. after a manual reinstall), then offers to download
+// whichever of sing-box.exe/wintun.dll is still missing and warns if no
+// usable config was found (a config can't be auto-downloaded). Runs on every
+// startup, but is only ever actionable on a fresh install or after a path
+// went stale, since all checks are no-ops once the files exist.
 func (a *App) checkFirstRunDeps() {
-	if _, err := os.Stat(a.cfg.SingBoxPath); os.IsNotExist(err) {
+	changed, missingSingBox, missingWintun, missingConfig := a.cfg.ReconcilePaths(a.exeDir)
+	if changed {
+		if err := a.cfg.Save(a.exeDir); err != nil {
+			a.log("save config after path reconciliation: %s", err)
+		} else {
+			a.log("reconciled config paths against exe directory: sing-box=%s wintun=%s config=%s",
+				a.cfg.SingBoxPath, a.cfg.WintunDllPath, a.cfg.ActiveConfigPath())
+		}
+	}
+	if missingConfig {
+		infoBox(fmt.Sprintf(a.strs.DialogMissingConfigFmt, a.cfg.ActiveConfigPath()), appTitle)
+	}
+	if missingSingBox {
 		a.offerSingBoxDownload()
 	}
-	if a.cfg.WintunDllPath != "" {
-		if _, err := os.Stat(a.cfg.WintunDllPath); os.IsNotExist(err) {
-			a.offerWintunDownload()
-		}
+	if missingWintun {
+		a.offerWintunDownload()
 	}
 }
 
@@ -620,7 +653,7 @@ func (a *App) offerWintunDownload() {
 	a.log("downloading wintun.dll")
 	if err := updater.DownloadWintunDll(a.cfg.WintunDllPath); err != nil {
 		a.log("wintun.dll download failed: %s", err)
-		infoBox(fmt.Sprintf(a.strs.DialogErrorFmt, err), appTitle)
+		infoBox(fmt.Sprintf(a.strs.DialogWintunManualFmt, err, updater.WintunDownloadURL, a.cfg.WintunDllPath), appTitle)
 		return
 	}
 	a.log("wintun.dll downloaded to %s", a.cfg.WintunDllPath)

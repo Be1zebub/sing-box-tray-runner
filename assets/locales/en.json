@@ -38,6 +38,8 @@
   "dialog_version_unknown": "none",
   "dialog_missing_sing_box_fmt": "sing-box.exe was not found at:\n%s\n\nDownload the latest version now?",
   "dialog_missing_wintun_fmt": "wintun.dll was not found at:\n%s\n\nIt is required for TUN mode. Download it now?",
+  "dialog_wintun_manual_fmt": "Automatic download failed: %s\n\nDownload wintun.dll manually from:\n%s\n\nThen place the wintun.dll file into the application folder, at:\n%s",
+  "dialog_missing_config_fmt": "No sing-box config file was found at:\n%s\n\nPlace a config file there, or pick a different one in Settings.",
   "about_sing_box_version_fmt": "%s version: %s",
 
   "settings_title": "sing-box-tray — Settings",

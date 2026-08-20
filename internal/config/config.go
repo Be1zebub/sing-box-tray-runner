@@ -84,7 +84,7 @@ func Load(exeDir string) (*TrayConfig, error) {
 		cfg.Language = "auto"
 	}
 	if cfg.Update.Channel == "" {
-		cfg.Update.Channel = "stable"
+		cfg.Update.Channel = "alpha"
 	}
 	if cfg.ConfigDir == "" && cfg.SelectedConfig == "" {
 		// Migrate the pre-multi-config "config_path" field (a single file
@@ -148,6 +148,55 @@ func absPath(base, p string) string {
 		return p
 	}
 	return filepath.Join(base, p)
+}
+
+// ReconcilePaths checks whether SingBoxPath, WintunDllPath, and the active
+// sing-box config still exist on disk. A path can go stale if the tray
+// launcher (and its companion files) were moved to a new folder while
+// tray-config.json still carries absolute paths from the old location: if a
+// configured path is missing but a same-named file exists directly in
+// exeDir, the config is repointed at it. changed reports whether any field
+// was repointed (the caller should persist the config); missingSingBox,
+// missingWintun, and missingConfig report whether that path is still
+// unresolved after the fallback attempt (WintunDllPath is optional, so an
+// empty value is never reported missing).
+func (c *TrayConfig) ReconcilePaths(exeDir string) (changed, missingSingBox, missingWintun, missingConfig bool) {
+	reconcile := func(current *string) bool {
+		if *current == "" {
+			return true
+		}
+		if _, err := os.Stat(*current); err == nil {
+			return true
+		}
+		fallback := filepath.Join(exeDir, filepath.Base(*current))
+		if fallback == *current {
+			return false
+		}
+		if _, err := os.Stat(fallback); err != nil {
+			return false
+		}
+		*current = fallback
+		changed = true
+		return true
+	}
+
+	missingSingBox = !reconcile(&c.SingBoxPath)
+	missingWintun = !reconcile(&c.WintunDllPath)
+
+	activePath := c.ActiveConfigPath()
+	if _, err := os.Stat(activePath); err != nil {
+		fallback := filepath.Join(exeDir, c.SelectedConfig)
+		if fallback == activePath {
+			missingConfig = true
+		} else if _, err := os.Stat(fallback); err != nil {
+			missingConfig = true
+		} else {
+			c.ConfigDir = exeDir
+			changed = true
+		}
+	}
+
+	return changed, missingSingBox, missingWintun, missingConfig
 }
 
 func (c *TrayConfig) Save(exeDir string) error {

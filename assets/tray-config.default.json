@@ -15,7 +15,7 @@
     "listen_port": 2080
   },
   "update": {
-    "channel": "stable",
+    "channel": "alpha",
     "auto_update": true
   },
   "launcher_update": {

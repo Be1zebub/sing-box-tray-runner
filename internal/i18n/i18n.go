@@ -63,6 +63,8 @@ type Strings struct {
 	DialogVersionUnknown     string `json:"dialog_version_unknown"`
 	DialogMissingSingBoxFmt  string `json:"dialog_missing_sing_box_fmt"`
 	DialogMissingWintunFmt   string `json:"dialog_missing_wintun_fmt"`
+	DialogWintunManualFmt    string `json:"dialog_wintun_manual_fmt"`
+	DialogMissingConfigFmt   string `json:"dialog_missing_config_fmt"`
 
 	AboutSingBoxVersionFmt string `json:"about_sing_box_version_fmt"`
 
