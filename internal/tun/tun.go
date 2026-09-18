@@ -131,8 +131,11 @@ func buildTUNInbound(cfg config.TUNConfig) map[string]any {
 //     use when building the auto_route routing table (without this the default
 //     routes that redirect browser traffic into TUN are not set up correctly on
 //     Windows)
-//   - prepends a process_name rule that sends sing-box's own connections via
-//     "direct", breaking the TUN loop for the proxy process itself
+//   - prepends two "direct" rules: ip_is_private (so private/loopback
+//     destinations never enter the tunnel) and then a process_name rule for
+//     sing-box's own connections (breaking the TUN loop for the proxy process
+//     itself). Both use the explicit action: "route" form; the bare
+//     top-level "outbound" form is deprecated.
 func injectSelfBypassRule(root map[string]json.RawMessage, processName string) error {
 	var route map[string]json.RawMessage
 	if raw, ok := root["route"]; ok {
@@ -159,15 +162,29 @@ func injectSelfBypassRule(root map[string]json.RawMessage, processName string) e
 		}
 	}
 
-	bypassRule := map[string]any{
+	// ip_is_private goes first: private, loopback and link-local destinations
+	// must always go direct, even if something still enters the TUN.
+	privateRule := map[string]any{
+		"ip_is_private": true,
+		"action":        "route",
+		"outbound":      "direct",
+	}
+	privateRaw, err := json.Marshal(privateRule)
+	if err != nil {
+		return fmt.Errorf("marshal private-direct rule: %w", err)
+	}
+
+	processRule := map[string]any{
 		"process_name": []string{processName},
+		"action":       "route",
 		"outbound":     "direct",
 	}
-	bypassRaw, err := json.Marshal(bypassRule)
+	processRaw, err := json.Marshal(processRule)
 	if err != nil {
-		return fmt.Errorf("marshal bypass rule: %w", err)
+		return fmt.Errorf("marshal process-direct rule: %w", err)
 	}
-	rules = append([]json.RawMessage{json.RawMessage(bypassRaw)}, rules...)
+
+	rules = append([]json.RawMessage{json.RawMessage(privateRaw), json.RawMessage(processRaw)}, rules...)
 
 	rulesRaw, err := json.Marshal(rules)
 	if err != nil {

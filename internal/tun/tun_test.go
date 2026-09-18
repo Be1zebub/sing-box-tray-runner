@@ -112,6 +112,10 @@ func TestInjectTUNDefaults(t *testing.T) {
 			RouteAddress        []string `json:"route_address"`
 			RouteExcludeAddress []string `json:"route_exclude_address"`
 		} `json:"inbounds"`
+		Route struct {
+			AutoDetectInterface bool             `json:"auto_detect_interface"`
+			Rules               []map[string]any `json:"rules"`
+		} `json:"route"`
 	}
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("parse injected config: %v", err)
@@ -134,6 +138,39 @@ func TestInjectTUNDefaults(t *testing.T) {
 		if !slices.Contains(in.RouteExcludeAddress, want) {
 			t.Errorf("route_exclude_address missing %q: %v", want, in.RouteExcludeAddress)
 		}
+	}
+
+	if !got.Route.AutoDetectInterface {
+		t.Error("route.auto_detect_interface must be injected for auto_route to work")
+	}
+
+	// Rule order: private/loopback first, then the process bypass. Both must
+	// use the explicit action: "route" form.
+	if len(got.Route.Rules) < 2 {
+		t.Fatalf("want at least the two injected rules, got %v", got.Route.Rules)
+	}
+	private := got.Route.Rules[0]
+	if private["ip_is_private"] != true {
+		t.Errorf(`rules[0] must be the ip_is_private rule, got %v`, private)
+	}
+	assertRouteDirect(t, "rules[0]", private)
+
+	process := got.Route.Rules[1]
+	names, ok := process["process_name"].([]any)
+	if !ok || len(names) != 1 || names[0] != "sing-box.exe" {
+		t.Errorf(`rules[1] must target process_name ["sing-box.exe"], got %v`, process["process_name"])
+	}
+	assertRouteDirect(t, "rules[1]", process)
+}
+
+// assertRouteDirect checks a rule is the modern action/outbound direct form.
+func assertRouteDirect(t *testing.T, where string, rule map[string]any) {
+	t.Helper()
+	if rule["action"] != "route" {
+		t.Errorf(`%s action = %v, want "route"`, where, rule["action"])
+	}
+	if rule["outbound"] != "direct" {
+		t.Errorf(`%s outbound = %v, want "direct"`, where, rule["outbound"])
 	}
 }
 
