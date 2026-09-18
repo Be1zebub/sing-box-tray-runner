@@ -4,7 +4,7 @@
 
 A minimal Windows system tray launcher for [sing-box](https://sing-box.sagernet.org/).
 
-Personal fork of [soksanichenko/sing-box-tray-runner](https://github.com/soksanichenko/sing-box-tray-runner).
+Personal fork of `soksanichenko/sing-box-tray-runner` (upstream).
 Unlike upstream, this fork **has no updater**: it makes no network requests at all, and
 `sing-box.exe`/`wintun.dll` are placed by hand (see [Runtime requirements](#runtime-requirements)).
 
