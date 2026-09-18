@@ -1,6 +1,14 @@
 # sing-box-tray — project notes for Claude
 
-Windows-only today (see below), but a native Linux port is planned — see `docs/linux-port.md` for the agreed scope/architecture before touching anything Linux-related.
+Windows-only system tray launcher for sing-box.
+
+**This is a fork.** The defining difference from upstream (`soksanichenko/sing-box-tray-runner`):
+**there is no updater and no network code at all.** `sing-box.exe` and `wintun.dll` are installed
+by hand. Do not reintroduce `net/http`, GitHub API calls, or self-replacement of the running exe —
+that was the whole point of forking. The Go module path is
+`github.com/Be1zebub/sing-box-tray-runner`.
+
+There is no Linux port planned; the code is Windows-only by design.
 
 ## Build
 
@@ -17,9 +25,18 @@ GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build \
   -o build/sing_box_tray_runner.exe .
 ```
 
-`scripts/build.sh`/`build.ps1` accept an optional `VERSION` env var, appended as `-ldflags -X .../internal/version.Version=$VERSION` — `release.yml` sets it from the pushed tag; unset (dev builds) leaves `version.Version` at its `"dev"` default.
+`scripts/build.sh`/`build.ps1` accept an optional `VERSION` env var, appended as
+`-ldflags -X github.com/Be1zebub/sing-box-tray-runner/internal/version.Version=$VERSION` —
+`release.yml` sets it from the pushed tag; unset (dev builds) leaves `version.Version` at its
+`"dev"` default. **A `-X` against a symbol that doesn't exist is silently ignored** (the build
+still succeeds), so if a version ever stops showing up, check that this path matches the real
+module path.
 
-`rsrc.syso` in the repo root is a pre-generated Windows resource object that embeds `app.manifest` (Common Controls v6 dependency) and `assets/icons/working.ico` (the exe's own icon, shown by Explorer/taskbar pinning — separate from any individual window's icon, see **Window icons** below). The Go toolchain links it automatically. Without the manifest, `lxn/walk` windows fail silently. Regenerate with:
+`rsrc.syso` in the repo root is a pre-generated Windows resource object that embeds `app.manifest`
+(Common Controls v6 dependency) and `assets/icons/working.ico` (the exe's own icon, shown by
+Explorer/taskbar pinning — separate from any individual window's icon, see **Window icons** below).
+The Go toolchain links it automatically. Without the manifest, `lxn/walk` windows fail silently.
+Regenerate with:
 
 ```sh
 ~/go/bin/rsrc -manifest app.manifest -ico assets/icons/working.ico -o rsrc.syso
@@ -30,11 +47,11 @@ GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build \
 ```
 main.go               — mutex, UAC elevation for TUN, systray.Run
 internal/
-  tray/tray.go        — App struct: orchestrates everything, handles menu clicks
+  tray/tray.go        — App struct: orchestrates everything, handles menu clicks, opens config file/folder
   state/state.go      — thread-safe AppState × ProxyMode state machine with subscriptions
   process/process.go  — sing-box child process: Start/Stop/watch (crash detection)
   config/config.go    — tray-config.json load/save; FindInboundAddr parses sing-box config
-  tun/tun.go          — InjectTUN: builds temp config with TUN inbound injected
+  tun/tun.go          — InjectTUN: builds temp config with TUN inbound + route rules injected
   proxy/proxy.go      — Windows system proxy via registry + WinInet flush
   elevation/          — IsElevated, RelaunchAsAdmin (ShellExecuteW "runas")
   autostart/          — HKCU Run key for normal autostart, Task Scheduler (schtasks.exe, CREATE_NO_WINDOW) for elevated (TUN) autostart
@@ -44,8 +61,6 @@ internal/
   settings/           — lxn/walk settings window
   aboutwin/           — lxn/walk About window (version info + clickable repo link)
   watcher/            — polls os.Stat every 2s for config file changes, and the config folder's file listing for added/removed configs
-  updater/            — GitHub release lookup + download/extract (sing-box) or fetch (launcher asset)
-  selfupdate/         — swaps the running tray exe for a freshly downloaded one
   version/            — Version var, overridden via -ldflags at release build time
   i18n/               — UI string catalog (en/ru/ua), OS locale detection, live menu retitling
 assets/
@@ -58,50 +73,193 @@ scripts/
 .github/
   workflows/ci.yml      — golangci-lint + build matrix (ubuntu-latest, windows-latest)
   workflows/release.yml — on `v*` tag push: builds and publishes a GitHub Release
-  dependabot.yml         — weekly gomod + github-actions update PRs
+  workflows/codeql.yml  — CodeQL static analysis (CI only, not shipped)
+  dependabot.yml        — weekly gomod + github-actions update PRs
 ```
 
 ## Key decisions and constraints
 
-**Single instance**: named kernel mutex `Global\SingBoxTray`. On UAC re-launch, the existing process must call `CloseHandle` on the mutex _before_ `os.Exit(0)` — `os.Exit` skips defers. The `releaseMutex` func is passed from `main` → `tray.NewApp`.
+**No network, manual dependencies**: nothing in the tree imports `net/http` or performs outbound
+requests. This is enforced by review, not by tooling — a regression here defeats the fork. The
+first-run check only *tells* the user where a missing `sing-box.exe`/`wintun.dll` has to go
+(`checkFirstRunDeps` in `tray.go`); it never downloads anything.
 
-**Tray icons**: `getlantern/systray` on Windows calls `LoadImage(LR_LOADFROMFILE, IMAGE_ICON)`. PNG bytes are silently ignored. Icons must be ICO format — `assets/icons/{idling,working,error}.ico` are real multi-resolution (16/32/48/256) artwork, embedded via `go:embed` in `assets/icons.go`.
+**Single instance**: named kernel mutex `Global\SingBoxTray`. On UAC re-launch, the existing
+process must call `CloseHandle` on the mutex _before_ `os.Exit(0)` — `os.Exit` skips defers. The
+`releaseMutex` func is passed from `main` → `tray.NewApp`.
 
-**lxn/walk windows**: require `runtime.LockOSThread()` on the goroutine that creates them, and a Windows manifest with Common Controls v6 (`rsrc.syso`). Without the manifest the window creation fails silently.
+**Tray icons**: `getlantern/systray` on Windows calls `LoadImage(LR_LOADFROMFILE, IMAGE_ICON)`.
+PNG bytes are silently ignored. Icons must be ICO format — `assets/icons/{idling,working,error}.ico`
+are real multi-resolution (16/32/48/256) artwork, embedded via `go:embed` in `assets/icons.go`.
 
-**Window icons**: Settings/Log/About windows showed no icon in the taskbar/title bar. Root cause: `lxn/walk`'s window-class registration (`MustRegisterWindowClassWithWndProcPtrAndStyle` in the vendored library) does `LoadIcon(hInst, MAKEINTRESOURCE(7))` as its class-icon fallback — a convention from an older `rsrc` default — but this project's `rsrc.syso` assigns resource IDs in embed order (manifest gets 1, then the icon group gets 2), so ID 7 never resolves and Windows silently falls back to the generic system icon for every `lxn/walk` window. Fix: `internal/appicon` (`Icon() *walk.Icon`) explicitly sets each window's `Icon` property (`MainWindow{Icon: ...}`), which drives `WM_SETICON` directly instead of relying on the class default. `walk.NewIconFromFile` re-reads from disk per DPI, so it can't take embedded `[]byte` directly — `appicon.Icon()` writes `assets.IconGrey` to a fixed path in `os.TempDir()` once (`sync.Once`) and loads from there; the resulting `*walk.Icon` is shared across all three windows. Callers assign into a `var winIcon walk.Image` (interface-typed) guarded by `if ic := appicon.Icon(); ic != nil`, not a bare `*walk.Icon`, to avoid passing a typed-nil pointer into the `Icon Property` field — `declarative.ImageFrom`'s `case nil:` only catches a true untyped nil interface, so a typed-nil `*walk.Icon` would fall through to `case Image` and could panic when methods are called on it.
+**lxn/walk windows**: require `runtime.LockOSThread()` on the goroutine that creates them, and a
+Windows manifest with Common Controls v6 (`rsrc.syso`). Without the manifest the window creation
+fails silently.
 
-**TUN mode**: requires elevation. When TUN is selected without admin rights, `RelaunchAsAdmin` spawns an elevated instance with `--force-mode=tun`. The non-elevated instance releases the mutex immediately then exits (no sleep).
+**Window icons**: `lxn/walk`'s window-class registration does `LoadIcon(hInst, MAKEINTRESOURCE(7))`
+as its class-icon fallback — a convention from an older `rsrc` default — but this project's
+`rsrc.syso` assigns resource IDs in embed order (manifest gets 1, then the icon group gets 2), so
+ID 7 never resolves and Windows falls back to the generic system icon for every `lxn/walk` window.
+Fix: `internal/appicon` (`Icon() *walk.Icon`) explicitly sets each window's `Icon` property
+(`MainWindow{Icon: ...}`), which drives `WM_SETICON` directly. `walk.NewIconFromFile` re-reads from
+disk per DPI, so it can't take embedded `[]byte` — `appicon.Icon()` writes `assets.IconGrey` to a
+fixed path in `os.TempDir()` once (`sync.Once`) and loads from there; the resulting `*walk.Icon` is
+shared across all three windows. Callers assign into a `var winIcon walk.Image` (interface-typed)
+guarded by `if ic := appicon.Icon(); ic != nil`, not a bare `*walk.Icon`: `declarative.ImageFrom`'s
+`case nil:` only catches a true untyped nil interface, so a typed-nil `*walk.Icon` would fall
+through to `case Image` and could panic.
 
-**Per-mode inbound injection**: `prepareConfig` (`internal/tray/tray.go`) filters the user's sing-box `config.json` down to only the inbound type relevant to the selected mode, so a config that defines both a proxy and a TUN inbound doesn't run both at once. Both paths use the shared helpers in `internal/config/config.go` (`LoadRawSingBoxConfig`, `FilterInbounds`, `WriteRawSingBoxConfig`) to rewrite a temp file — the original `config.json` is never modified. If a matching inbound already exists it's kept as-is; only if none is found is a default one built and appended.
-- **TUN** (`internal/tun/tun.go`, `InjectTUN`): keeps only `tun`-type inbounds, appending a default one from `tray-config.json`'s `tun.*` fields if none exists. Also injects `route.auto_detect_interface: true` (required — without it sing-box cannot build Windows routing table entries and TUN captures no browser traffic) and prepends `{ process_name: ["sing-box.exe"], outbound: "direct" }` as first route rule to break the TUN loop for sing-box's own connections.
-- **System proxy** (`config.InjectSystemProxy`): keeps only `http`/`mixed`-type inbounds, appending a default `mixed` inbound from `tray-config.json`'s `system_proxy.*` fields if none exists.
+**TUN mode**: requires elevation. When TUN is selected without admin rights, `RelaunchAsAdmin`
+spawns an elevated instance with `--force-mode=tun`. The non-elevated instance releases the mutex
+immediately then exits (no sleep).
+
+**Per-mode inbound injection**: `prepareConfig` (`internal/tray/tray.go`) filters the user's
+sing-box `config.json` down to only the inbound type relevant to the selected mode, so a config
+that defines both a proxy and a TUN inbound doesn't run both at once. Both paths use the shared
+helpers in `internal/config/config.go` (`LoadRawSingBoxConfig`, `FilterInbounds`,
+`WriteRawSingBoxConfig`) to rewrite a temp file — the original `config.json` is never modified. If
+a matching inbound already exists it's kept as-is; only if none is found is a default one built and
+appended.
+- **TUN** (`internal/tun/tun.go`, `InjectTUN`): keeps only `tun`-type inbounds, appending a default
+  one built from `tray-config.json`'s `tun.*` fields if none exists. Also injects
+  `route.auto_detect_interface: true` (required — without it sing-box cannot build Windows routing
+  table entries and TUN captures no browser traffic) and prepends two route rules (see **TUN IPv6 /
+  routing** below). All three address lists are overridable from `tun.*`.
+- **System proxy** (`config.InjectSystemProxy`): keeps only `http`/`mixed`-type inbounds, appending
+  a default `mixed` inbound from `tray-config.json`'s `system_proxy.*` fields if none exists.
 - Both write the result to `os.TempDir()`; the temp file is deleted on stop/crash.
 
-**Absolute paths**: Go 1.19+ refuses relative paths in `exec.Command`. All paths from `tray-config.json` are resolved to absolute at load time in `config.Load`.
+**TUN IPv6 / routing** (`internal/tun/tun.go`): the injected tun inbound always carries an **IPv6
+address** alongside the IPv4 one (`tun.address` defaults to
+`["172.19.0.1/30", "fdfe:dcba:9876::1/126"]`). This is load-bearing, not cosmetic: with
+`strict_route: true` and **no** IPv6 address, sing-tun installs an unconditional WFP block filter
+on `FWPM_LAYER_ALE_AUTH_CONNECT_V6`, which blocks all outbound IPv6 including `::1` — and anything
+that resolves `localhost` to IPv6 (Node/Vite, Next, …) becomes unreachable while TUN is up. Related
+rules, all in the injected config:
+- `route_address` is deliberately **IPv4-only** (`0.0.0.0/1`, `128.0.0.0/1`). Putting IPv6 here
+  would make `auto_route` install an IPv6 default route, and direct IPv6 traffic could then re-enter
+  the tunnel (sing-box#4178 loop).
+- `route_exclude_address` covers loopback, RFC1918 and link-local (`127.0.0.0/8`, `::1/128`,
+  `10/8`, `172.16/12`, `192.168/16`, `169.254/16`, `fc00::/7`, `fe80::/10`, `ff00::/8`), so LAN and
+  loopback traffic never enter the tunnel at all.
+- `route.rules` gets two prepended entries, in this order: `{ip_is_private: true, action: "route",
+  outbound: "direct"}` first, then `{process_name: ["sing-box.exe"], action: "route", outbound:
+  "direct"}` (keeps sing-box's own connections from being re-captured by the TUN interface). Both
+  use the explicit `action: "route"` form — the bare top-level `outbound` form is deprecated.
 
-**`schtasks.exe`**: all calls use `CREATE_NO_WINDOW` (`SysProcAttr{CreationFlags: 0x08000000}`) to prevent console flash on startup.
+All of the above is covered by `internal/tun/tun_test.go` (pure JSON transform, no admin needed).
 
-**Stop→Start race**: `pendingStart bool` in `App`. If `start()` is called while state is `StateStopping`, it sets the flag and returns; `stop()` checks the flag after completing and calls `start()`.
+**Absolute paths**: Go 1.19+ refuses relative paths in `exec.Command`. All paths from
+`tray-config.json` are resolved to absolute at load time in `config.Load`.
 
-**Config directory + Config submenu**: `config_dir`/`selected_config` (replacing the old single `config_path`) let a folder hold multiple sing-box configs, switchable without touching Settings. `config.Load` migrates a legacy `config_path` (from a tray-config.json predating this change) into `config_dir`/`selected_config` on first load, so existing installs keep pointing at their real config instead of silently falling back to the exe directory. `config.ListConfigFiles` (`internal/config/config.go`) scans `config_dir` non-recursively for `*.json`, excluding `tray-config.json` itself (relevant since the default `config_dir` is `.`, the exe directory, where `tray-config.json` also lives). `a.buildConfigItems(parent, dir)` (`tray.go`) does the scan-and-populate: it logs `config dir %s: found %d config file(s): %v` unconditionally (not just on error) so a folder that unexpectedly yields zero files is diagnosable from the log instead of just showing up as a disabled menu, adds one checkable submenu item per file found, each running its own `for range item.ClickedCh` goroutine (`getlantern/systray`'s `AddSubMenuItemCheckbox`/`ClickedCh` are documented safe to use from any goroutine — this is unlike every other submenu in the tray (Mode, Updates, Languages), which are fixed-size and folded into the single `select` in `handleClicks`; Config can't be, since the item count depends on what's in the folder), and enables/disables the parent item based on whether anything was found. `OnReady` calls it once for the startup scan; `rebuildConfigMenu` (called from `openSettings` when `ConfigDir` changed) calls it again against the new folder — old items are `Hide()`-den first since `getlantern/systray` has no item-removal API, then a fresh set is built and re-enables the parent if the new folder has files (undoing a previous disable). Clicking a config entry calls `switchConfig`, which mirrors `switchMode`: persists the choice, restarts sing-box live if it was running, and restarts the config-file watcher (`restartConfigWatcher`, replacing the old fixed `watchConfigFiles`) so it tracks the newly active file instead of the old one. The Settings window's config picker (a `ComboBox`, see `internal/settings/settings.go`) is intentionally fed the *same* `configNames` slice the tray submenu was last built from (passed into `settings.Show`), rather than re-scanning the disk itself, so the two can never disagree about what's available *at the moment Settings was opened* — picking a different folder in Settings only takes effect (both for the dropdown's own list and the tray submenu) after Save, via `rebuildConfigMenu`. `config.ListConfigFiles` matches `*.json` and excludes `tray-config.json` case-insensitively (`strings.EqualFold`), since Windows filesystems are case-insensitive and a mixed-case extension or filename would otherwise silently fall through the scan. The folder itself is also live-watched: `restartConfigDirWatcher` (started from `OnReady`, restarted alongside `restartConfigWatcher` whenever `ConfigDir` changes in Settings) wraps a `watcher.DirWatcher` (`internal/watcher/watcher.go`) that polls `config.ListConfigFiles(dir)` every 2s and calls `rebuildConfigMenu` when the returned name list differs from the previous poll — so dropping a new `*.json` file into `config_dir` (or removing one) updates the tray submenu without needing a tray restart or a trip through Settings. `DirWatcher` diffs sorted name slices rather than mtimes, unlike the plain `Watcher` it lives alongside, which is why it's a separate type in the same file instead of a mode of the existing one.
-- **Gotcha**: `settings.configIndex` must return `-1`, not `0`, when the scanned config list is empty. `lxn/walk`'s declarative `ComboBox{CurrentIndex: 0}` on a model with zero items makes `walk.ComboBox.SetCurrentIndex(0)` fail (Win32 `CB_SETCURSEL` on an empty combo can't select index 0), which fails the whole `MainWindow{}.Create()` call — and `runWindow` swallows that error silently (just `return`s), so the entire Settings window fails to open with no error shown. `-1` is always valid (it means "no selection").
+**`schtasks.exe`**: all calls use `CREATE_NO_WINDOW` (`SysProcAttr{CreationFlags: 0x08000000}`) to
+prevent console flash on startup.
 
-**sing-box auto-updater** (`internal/updater/updater.go`, orchestrated by `tray.go`'s `checkSingBoxUpdate`/`installSingBoxUpdate`): `updater.FetchLatest(owner, repo, channel)` hits `GET /repos/<owner>/<repo>/releases?per_page=10` (no auth, requires a `User-Agent` header) and is shared with the launcher self-updater below. Every asset fetch (release zips, the launcher exe, wintun.dll) goes through `download`/`withRetry`, which retries up to `downloadRetries` (3) times with a `downloadRetryDelay` (3s) pause between attempts — covers a transfer that starts but drops mid-download, not just a failed connection. Channel selection scans that list rather than using `/releases/latest`: `alpha` takes the first non-draft entry, `stable` takes the first non-draft, non-prerelease entry — this also lets `stable` correctly skip past newer alphas. The Windows asset is matched by exact suffix `-windows-amd64.zip`, which naturally excludes the `-legacy-windows-7.zip` variant (different suffix). The zip's contents are nested one level down (e.g. `sing-box-1.13.14-windows-amd64/{sing-box.exe, libcronet.dll, LICENSE}`); extraction strips whatever that single top-level directory is named (not hardcoded) and copies everything inside it — `libcronet.dll` is a runtime dependency of `sing-box.exe`, not just packaging. Installs go into `<exeDir>/sing-box/<tag>/`, tray.go points `sing_box_path` at the new copy and prunes sibling version directories. There is no `installed_version` config field — `updater.InstalledVersion` derives the current version by checking whether `sing_box_path` matches `<managedRoot>/<tag>/sing-box.exe`, so it can't go stale if the user hand-edits the path. The startup check (`OnReady`) pushes a toast unless `cfg.Update.AutoUpdate` is set, in which case it installs (and restarts sing-box if running) silently, no prompt; the interactive "Check for Updates" menu path always confirms via a Yes/No dialog first regardless of the auto-update setting. `OnReady` also spawns `periodicUpdateChecks`, which re-runs both the sing-box and launcher non-interactive checks every `updateCheckInterval` (6h) for as long as the tray keeps running, so a long-lived tray picks up new releases without needing a restart. Switching the stable/pre-release channel (`toggleSingBoxPrerelease`, or the equivalent checkbox in Settings) immediately runs the same interactive check — a channel switch is exactly the situation where a different release is expected to be available, so it's checked right away instead of waiting for the next startup or manual "Check for Updates" click.
+**Stop→Start race**: `pendingStart bool` in `App`. If `start()` is called while state is
+`StateStopping`, it sets the flag and returns; `stop()` checks the flag after completing and calls
+`start()`.
 
-**Tray launcher self-updater** (`internal/selfupdate/selfupdate.go` + `internal/version/version.go`, orchestrated by `tray.go`'s `checkLauncherUpdate`/`installLauncherUpdate`): targets the repo the code actually lives in on GitHub — `soksanichenko/sing-box-tray-runner` per `git remote -v`, **not** the Go module path (`github.com/Be1zebub/sing-box-tray-runner`), which is just an import-path choice. The release asset is the raw exe `release.yml` uploads (`sing_box_tray_runner.exe`, matched exactly via `updater.AssetNamed`, no zip). Current version comes from `version.Version`, a build-time `-X` override (`"dev"` for any build that didn't set it, e.g. local dev builds — always looks "outdated" against a real release, same as sing-box's fresh-install case). Mechanics, in order: download the new exe to `<exeDir>/sing_box_tray_runner.exe.new` — **same directory as the running exe, not `os.TempDir()`**, because `os.Rename`/`MoveFileW` on Windows can't cross drives; stop sing-box first if it's running (a child process isn't tied to the parent's lifetime here, so it would otherwise be silently orphaned once this process exits); `selfupdate.Apply` renames the running exe to `<exe>.old` (Windows permits renaming a mapped/executing image, just not deleting it) and moves the `.new` file into its place; spawn the new exe, then `releaseMutex()` + `os.Exit(0)` — the same spawn-before-release sequence the existing UAC elevation relaunch in `start()` already uses, reused rather than inventing a different handoff. `main.go` calls `selfupdate.CleanupOld(exePath)` once at startup to remove a leftover `.old` from a previous update. The startup check only auto-installs when `cfg.LauncherUpdate.AutoUpdate` is set; otherwise toast-only. There's no pre-release channel for the launcher (unlike sing-box) — always the latest stable release.
+**Config directory + Config submenu**: `config_dir`/`selected_config` (replacing the old single
+`config_path`) let a folder hold multiple sing-box configs, switchable without touching Settings.
+`config.Load` migrates a legacy `config_path` into `config_dir`/`selected_config` on first load, so
+existing installs keep pointing at their real config instead of silently falling back to the exe
+directory. `config.ListConfigFiles` scans `config_dir` non-recursively for `*.json`, excluding
+`tray-config.json` (relevant since the default `config_dir` is `.`, the exe directory, where
+`tray-config.json` also lives). `a.buildConfigItems(parent, dir)` (`tray.go`) does the
+scan-and-populate: it logs `config dir %s: found %d config file(s): %v` unconditionally so a folder
+that unexpectedly yields zero files is diagnosable, adds one checkable submenu item per file found,
+each running its own `for range item.ClickedCh` goroutine (`getlantern/systray`'s
+`AddSubMenuItemCheckbox`/`ClickedCh` are safe from any goroutine — unlike every other fixed-size
+submenu (Mode, Languages), which are folded into the single `select` in `handleClicks`; Config
+can't be, since the item count depends on the folder), and enables/disables the parent based on
+whether anything was found. `OnReady` calls it once; `rebuildConfigMenu` (called from `openSettings`
+when `ConfigDir` changed) calls it again against the new folder — old items are `Hide()`-den first
+since `getlantern/systray` has no item-removal API, then a fresh set is built and re-enables the
+parent if the new folder has files. Clicking a config entry calls `switchConfig`, which mirrors
+`switchMode`: persists the choice, restarts sing-box live if it was running, and restarts the
+config-file watcher (`restartConfigWatcher`) so it tracks the newly active file. The Settings window
+config picker is fed the *same* `configNames` slice the tray submenu was last built from (passed
+into `settings.Show`), rather than re-scanning disk, so the two can never disagree about what's
+available *at the moment Settings was opened*. `ListConfigFiles` matches `*.json` and excludes
+`tray-config.json` case-insensitively (`strings.EqualFold`). The folder itself is live-watched too:
+`restartConfigDirWatcher` wraps a `watcher.DirWatcher` that polls `config.ListConfigFiles(dir)` every
+2s and calls `rebuildConfigMenu` when the name list changed — so dropping in a new `*.json` (or
+removing one) updates the tray submenu without a restart. `DirWatcher` diffs sorted name slices, not
+mtimes, which is why it's a separate type from `Watcher`.
+- **Gotcha**: `settings.configIndex` must return `-1`, not `0`, when the scanned config list is
+  empty. `lxn/walk`'s declarative `ComboBox{CurrentIndex: 0}` on a model with zero items makes
+  `walk.ComboBox.SetCurrentIndex(0)` fail (Win32 `CB_SETCURSEL` on an empty combo can't select
+  index 0), which fails the whole `MainWindow{}.Create()` call — and `runWindow` swallows that error
+  silently, so the entire Settings window fails to open with no error shown. `-1` is always valid.
 
-**First-run dependency check** (`tray.go`'s `checkFirstRunDeps`, called synchronously in `OnReady` before `start_on_launch` is honored): first calls `config.ReconcilePaths(exeDir)`, which re-checks `SingBoxPath`, `WintunDllPath`, and the active config against disk and, for any that no longer exist, looks for a same-named file directly in `exeDir` — this recovers automatically when the tray (and its companion files) were moved/reinstalled into a new folder while `tray-config.json` still carries absolute paths from the old one; any field it repoints gets saved back to `tray-config.json`. Whatever `ReconcilePaths` couldn't resolve is then handled: missing `sing_box_path`/`wintun_dll_path` each trigger a Yes/No dialog offering to download it (this — and the reconciliation — only ever fires in practice on a fresh install, a moved install, or if the user deleted a file, since all checks are no-ops once the files exist); a missing config can't be auto-downloaded, so it just shows a warning dialog naming the expected path. Missing sing-box.exe reuses the existing updater path (`updater.FetchLatest` + `installSingBoxUpdate(rel, true)`) rather than duplicating the download/extract logic. wintun.dll has no GitHub-releases equivalent, so `updater.DownloadWintunDll` hits a **hardcoded** `wintun.net` zip URL pinned to a specific version (`updater.WintunDownloadURL`/`wintunZipDllEntry` in `internal/updater/updater.go`) — wintun.net has no "latest" alias, but the DLL itself hasn't changed since 2021, so pinning is low-maintenance; bump the version string by hand if wintun.net ever ships a new one. The zip's internal layout is `wintun/bin/<arch>/wintun.dll` (verified by inspecting the archive); only the amd64 entry is extracted, matching this project's Windows/amd64-only scope. If the automatic wintun.dll download itself fails (e.g. wintun.net unreachable), the error dialog falls back to pointing the user at `updater.WintunDownloadURL` directly for a manual download, naming the exact destination path (`cfg.WintunDllPath`) the file needs to be dropped into.
+**Open config file / folder** (`tray.go`): two tray items — `openActiveConfig` (verb `"open"`) and
+`openConfigDir` (verb `"explore"`), both through the shared `a.shellOpen(path, verb)` helper, which
+calls `ShellExecuteW` from `shell32.dll` and only logs a failure (a stale path simply opens nothing).
+Same call shape `aboutwin` uses for its repo link, just different verbs.
 
-**Linting** (`.golangci.yml`): CI runs `golangci-lint` with `GOOS=windows` (the whole codebase is behind `//go:build windows`, so without it nothing gets analyzed). `errcheck` excludes ignoring the error from `Close()`/`Call()` on file handles, registry keys, `*walk.FormBase`, and Win32 `LazyProc` calls — established convention throughout this codebase, not something to "fix" file-by-file. `staticcheck`'s `ST1001` (no dot-imports) is disabled because `. "github.com/lxn/walk/declarative"` is that library's intended usage; `ST1000` (package doc comments) is disabled because it isn't this project's convention.
+**First-run dependency check** (`tray.go`'s `checkFirstRunDeps`, called synchronously in `OnReady`
+before `start_on_launch` is honored): first calls `config.ReconcilePaths(exeDir)`, which re-checks
+`SingBoxPath`, `WintunDllPath`, and the active config against disk and, for any that no longer
+exist, looks for a same-named file directly in `exeDir` — this recovers automatically when the tray
+(and its companion files) were moved/reinstalled into a new folder while `tray-config.json` still
+carries absolute paths from the old one; any field it repoints gets saved back. Whatever
+`ReconcilePaths` couldn't resolve is then **reported, never downloaded**: a missing
+`sing_box_path`/`wintun_dll_path` logs the path and shows a dialog naming exactly where the file has
+to be placed; a missing config shows a warning naming the expected path. `tun.EnsureWintunDll` (used
+at TUN start) copies a **local** file next to `sing-box.exe` — no network.
 
-**About menu item**: `showAbout` (`tray.go`) gathers `version.Version` (this tray build), `updater.InstalledVersion(a.cfg.SingBoxPath, a.managedSingBoxRoot())` (empty/"unknown" unless `sing_box_path` currently points into the tray-managed `sing-box/<tag>/` folder — same derivation the updater itself uses), and a repo URL built from the `launcherOwner`/`launcherRepo` constants already used by the self-updater, so the two never drift apart. Displayed via `internal/aboutwin`, a small `lxn/walk` window (same `MainWindow`/singleton-instance pattern as `logwin`/`settings`) rather than `infoBox`, since a plain `MessageBoxW` can't contain a clickable link: the repo URL is a `walk.LinkLabel` (Win32 SysLink, `Text: <a href="...">...</a>`) whose `OnLinkActivated` opens it via `ShellExecuteW` (the same call `internal/elevation` uses for the UAC "runas" relaunch, just with the `"open"` verb instead of `"runas"`).
+**Linting** (`.golangci.yml`): CI runs `golangci-lint` with `GOOS=windows` (the whole codebase is
+behind `//go:build windows`, so without it nothing gets analyzed). `errcheck` excludes ignoring the
+error from `Close()`/`Call()` on file handles, registry keys, `*walk.FormBase`, and Win32 `LazyProc`
+calls — established convention throughout this codebase, not something to "fix" file-by-file.
+`staticcheck`'s `ST1001` (no dot-imports) is disabled because `. "github.com/lxn/walk/declarative"`
+is that library's intended usage; `ST1000` (package doc comments) is disabled because it isn't this
+project's convention.
 
-**Autostart backend** (`internal/autostart/autostart.go`): `Enable(elevated bool)` picks between two mechanisms depending on whether the current proxy mode needs admin rights. Non-elevated autostart writes an `HKCU\...\Run` value (`registry.CURRENT_USER`, same package `internal/proxy` already uses for the system-proxy registry keys) — a standard user always has write access to their own HKCU hive, so this can't hit the "Access is denied" failure `schtasks /Create` can produce in locked-down environments (group policy or EDR software restricting Task Scheduler, observed in the wild even for a user creating their own non-elevated task). Elevated autostart (TUN default mode) still goes through Task Scheduler with `/RL HIGHEST`, since that's the only mechanism that can launch with an administrator token at logon without popping an interactive UAC prompt — `HKCU\Run` always launches at the user's normal integrity level, so switching TUN autostart to it would trade the silent elevation for a UAC prompt on every login. `Enable` opportunistically removes whichever mechanism it's *not* using (only if that one is actually present) so toggling between elevated and non-elevated autostart never leaves two autostart entries launching the app twice; `IsEnabled`/`Disable` check and act on both mechanisms so neither can go unnoticed or unremoved.
+**About menu item**: `showAbout` (`tray.go`) shows `version.Version` (this build) plus a clickable
+link to `repoURL` — a single constant in `tray.go` (`https://github.com/Be1zebub/sing-box-tray-runner`),
+so the link can't drift. Displayed via `internal/aboutwin`, a small `lxn/walk` window (same
+`MainWindow`/singleton-instance pattern as `logwin`/`settings`) rather than `infoBox`, since a plain
+`MessageBoxW` can't contain a clickable link: the repo URL is a `walk.LinkLabel` (Win32 SysLink)
+whose `OnLinkActivated` opens it via `ShellExecuteW` with the `"open"` verb.
 
-**Autostart toggle** (`tray.go`): `toggleAutostart` is the single source of truth for actually calling into `autostart.Enable`/`Disable` and syncing `a.items.autostart`'s checkbox + `cfg.Autostart`; it always acts on whatever `autostart.IsEnabled()` currently reports, never on a passed-in target state, and surfaces a failed call via `infoBox` (not just a log line, which would leave a silently-stuck checkbox with no explanation). Both the tray menu checkbox (checked at `OnReady` from `autostart.IsEnabled()`, since `cfg.Autostart` is a write-only mirror that can go stale) and the Settings checkbox call into this same function rather than duplicating the enable/disable logic: `openSettings` captures `prevAutostart := autostart.IsEnabled()` before showing the dialog, passes it into `settings.Show` so the checkbox reflects real state, and in the save callback calls `a.toggleAutostart()` exactly once if `updated.Autostart != prevAutostart` (the Settings dialog itself only stores the checkbox value into `cfg.Autostart`, a plain struct field with no side effects, since `internal/settings` has no access to autostart or TUN-elevation state). After that call, the callback overwrites `updated.Autostart` with a fresh `autostart.IsEnabled()` read and syncs `a.items.autostart` from it via `checkOrUncheck` before saving — this is deliberate rather than trusting the checkbox's requested value, so a failed enable/disable can't leave `tray-config.json` claiming a state that was never actually applied.
+**Autostart backend** (`internal/autostart/autostart.go`): `Enable(elevated bool)` picks between two
+mechanisms depending on whether the current proxy mode needs admin rights. Non-elevated autostart
+writes an `HKCU\...\Run` value (`registry.CURRENT_USER`, same package `internal/proxy` already uses
+for the system-proxy registry keys) — a standard user always has write access to their own HKCU
+hive, so this can't hit the "Access is denied" failure `schtasks /Create` can produce in locked-down
+environments (group policy or EDR software restricting Task Scheduler). Elevated autostart (TUN
+default mode) still goes through Task Scheduler with `/RL HIGHEST`, since that's the only mechanism
+that can launch with an administrator token at logon without popping an interactive UAC prompt —
+`HKCU\Run` always launches at the user's normal integrity level. `Enable` opportunistically removes
+whichever mechanism it's *not* using (only if that one is present) so toggling never leaves two
+autostart entries launching the app twice; `IsEnabled`/`Disable` check and act on both mechanisms.
 
-**Localization** (`internal/i18n/i18n.go`): `Strings` covers every UI-facing string (tray menu, tooltips, toast/dialog text, Settings/Log window chrome), embedded per-language as `assets/locales/{en,ru,ua}.json` and loaded at `init()`. `tray-config.json`'s `language` field is resolved at `main.go` startup (`i18n.Resolve`, falling back to `i18n.Detect()` which reads `GetUserDefaultUILanguage` via kernel32) and passed into `tray.NewApp`. The tray **Languages** submenu and the Settings language dropdown both switch it live (no restart) via `App.applyLanguage`, which recomputes `a.strs` and calls `refreshMenuTexts()` — this relies on `getlantern/systray`'s `(*MenuItem).SetTitle`/`SetTooltip` (confirmed present in the vendored source), so every menu item whose text is translated must be stored on `App.items` even if never clicked (e.g. the "Mode"/"Updates" submenu parents), specifically so it can be retitled later. Proper nouns (`sing-box-tray`, `sing-box`) and the language names/picker label itself are literal constants, never routed through `Strings` — a language picker translated into a language the user doesn't want is unfindable. Per the user's global logging convention, `a.log(...)` calls are deliberately **not** localized and stay in English always; only `i18n` covers the interactive UI.
+**Autostart toggle** (`tray.go`): `toggleAutostart` is the single source of truth for calling
+`autostart.Enable`/`Disable` and syncing `a.items.autostart`'s checkbox + `cfg.Autostart`; it always
+acts on whatever `autostart.IsEnabled()` currently reports, never a passed-in target state, and
+surfaces a failed call via `infoBox`. Both the tray checkbox (checked at `OnReady` from
+`autostart.IsEnabled()`, since `cfg.Autostart` is a write-only mirror that can go stale) and the
+Settings checkbox call this same function: `openSettings` captures `prevAutostart :=
+autostart.IsEnabled()` before showing the dialog, passes it into `settings.Show` so the checkbox
+reflects real state, and in the save callback calls `a.toggleAutostart()` exactly once if
+`updated.Autostart != prevAutostart`. After that call the callback overwrites `updated.Autostart`
+with a fresh `autostart.IsEnabled()` read and syncs the tray checkbox from it before saving — so a
+failed enable/disable can't leave `tray-config.json` claiming a state that was never applied.
+
+**Localization** (`internal/i18n/i18n.go`): `Strings` covers every UI-facing string (tray menu,
+tooltips, toast/dialog text, Settings/Log window chrome), embedded per-language as
+`assets/locales/{en,ru,ua}.json` and loaded at `init()`. `tray-config.json`'s `language` field is
+resolved at `main.go` startup (`i18n.Resolve`, falling back to `i18n.Detect()` which reads
+`GetUserDefaultUILanguage` via kernel32) and passed into `tray.NewApp`. The tray **Languages**
+submenu and the Settings language dropdown both switch it live (no restart) via `App.applyLanguage`,
+which recomputes `a.strs` and calls `refreshMenuTexts()` — this relies on `getlantern/systray`'s
+`(*MenuItem).SetTitle`/`SetTooltip`, so every menu item whose text is translated must be stored on
+`App.items` even if never clicked (e.g. the "Mode" submenu parent), specifically so it can be
+retitled later. Proper nouns (`sing-box-tray`, `sing-box`) and the language names/picker label
+itself are literal constants, never routed through `Strings` — a language picker translated into a
+language the user doesn't want is unfindable. Per the global logging convention, `a.log(...)` calls
+are deliberately **not** localized and stay in English always.
 
 ## tray-config.json fields
 
@@ -113,16 +271,15 @@ scripts/
 | `selected_config` | `config.json` | base sing-box config file name inside `config_dir`, not modified — see `TrayConfig.ActiveConfigPath` |
 | `system_proxy_inbound` | `""` | tag of the http/mixed inbound; empty = first found |
 | `autostart` | `false` | write-only mirror of the autostart entry (registry Run key or Task Scheduler task), set by `toggleAutostart`; actual state on startup comes from `autostart.IsEnabled()`, not this field |
-| `default_mode` | `system_proxy` | `off` / `system_proxy` / `tun` |
+| `default_mode` | `tun` | `off` / `system_proxy` / `tun` |
 | `start_on_launch` | `false` | auto-start sing-box when tray starts |
 | `log_lines` | `200` | circular log buffer size |
 | `language` | `auto` | `auto` / `en` / `ru` / `ua` — UI language |
 | `system_proxy.tag` | `mixed-in` | tag for the auto-generated default mixed inbound |
 | `system_proxy.listen` | `127.0.0.1` | |
 | `system_proxy.listen_port` | `2080` | |
-| `update.channel` | `alpha` | `stable` / `alpha` — sing-box release channel for the updater |
-| `update.auto_update` | `true` | silently install (and restart sing-box if running) instead of prompting |
-| `launcher_update.auto_update` | `true` | silently self-update (and relaunch) instead of prompting |
 | `tun.interface_name` | `singbox-tun` | |
-| `tun.address` | `["172.19.0.1/30"]` | |
+| `tun.address` | `["172.19.0.1/30", "fdfe:dcba:9876::1/126"]` | must include an IPv6 CIDR — see **TUN IPv6 / routing** |
+| `tun.route_address` | `["0.0.0.0/1", "128.0.0.0/1"]` | IPv4-only on purpose |
+| `tun.route_exclude_address` | loopback + RFC1918 + link-local | kept out of the tunnel |
 | `tun.mtu` | `9000` | |
