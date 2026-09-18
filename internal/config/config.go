@@ -17,31 +17,18 @@ import (
 const trayConfigFile = "tray-config.json"
 
 type TrayConfig struct {
-	SingBoxPath        string               `json:"sing_box_path"`
-	WintunDllPath      string               `json:"wintun_dll_path"`
-	ConfigDir          string               `json:"config_dir"`
-	SelectedConfig     string               `json:"selected_config"`
-	SystemProxyInbound string               `json:"system_proxy_inbound"`
-	Autostart          bool                 `json:"autostart"`
-	StartOnLaunch      bool                 `json:"start_on_launch"`
-	DefaultMode        string               `json:"default_mode"`
-	LogLines           int                  `json:"log_lines"`
-	Language           string               `json:"language"`
-	SystemProxy        SystemProxyConfig    `json:"system_proxy"`
-	Update             UpdateConfig         `json:"update"`
-	LauncherUpdate     LauncherUpdateConfig `json:"launcher_update"`
-	TUN                TUNConfig            `json:"tun"`
-}
-
-// UpdateConfig controls the sing-box binary auto-updater.
-type UpdateConfig struct {
-	Channel    string `json:"channel"`     // "stable" or "alpha"
-	AutoUpdate bool   `json:"auto_update"` // silently install without prompting
-}
-
-// LauncherUpdateConfig controls the tray launcher's own self-updater.
-type LauncherUpdateConfig struct {
-	AutoUpdate bool `json:"auto_update"` // silently self-update without prompting
+	SingBoxPath        string            `json:"sing_box_path"`
+	WintunDllPath      string            `json:"wintun_dll_path"`
+	ConfigDir          string            `json:"config_dir"`
+	SelectedConfig     string            `json:"selected_config"`
+	SystemProxyInbound string            `json:"system_proxy_inbound"`
+	Autostart          bool              `json:"autostart"`
+	StartOnLaunch      bool              `json:"start_on_launch"`
+	DefaultMode        string            `json:"default_mode"`
+	LogLines           int               `json:"log_lines"`
+	Language           string            `json:"language"`
+	SystemProxy        SystemProxyConfig `json:"system_proxy"`
+	TUN                TUNConfig         `json:"tun"`
 }
 
 // SystemProxyConfig describes the default mixed inbound to inject into the
@@ -82,9 +69,6 @@ func Load(exeDir string) (*TrayConfig, error) {
 	}
 	if cfg.Language == "" {
 		cfg.Language = "auto"
-	}
-	if cfg.Update.Channel == "" {
-		cfg.Update.Channel = "alpha"
 	}
 	if cfg.ConfigDir == "" && cfg.SelectedConfig == "" {
 		// Migrate the pre-multi-config "config_path" field (a single file

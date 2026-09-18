@@ -14,13 +14,6 @@
     "listen": "127.0.0.1",
     "listen_port": 2080
   },
-  "update": {
-    "channel": "alpha",
-    "auto_update": true
-  },
-  "launcher_update": {
-    "auto_update": true
-  },
   "tun": {
     "interface_name": "singbox-tun",
     "address": ["172.19.0.1/30"],

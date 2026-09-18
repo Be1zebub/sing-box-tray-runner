@@ -23,7 +23,7 @@ var (
 )
 
 // Show opens the About window, or brings it to front if already open.
-func Show(strs i18n.Strings, appTitle, trayVersion, singBoxName, singBoxVersion, repoURL string) {
+func Show(strs i18n.Strings, appTitle, trayVersion, repoURL string) {
 	mu.Lock()
 	existing := mw
 	mu.Unlock()
@@ -36,10 +36,10 @@ func Show(strs i18n.Strings, appTitle, trayVersion, singBoxName, singBoxVersion,
 		return
 	}
 
-	go runWindow(strs, appTitle, trayVersion, singBoxName, singBoxVersion, repoURL)
+	go runWindow(strs, appTitle, trayVersion, repoURL)
 }
 
-func runWindow(strs i18n.Strings, appTitle, trayVersion, singBoxName, singBoxVersion, repoURL string) {
+func runWindow(strs i18n.Strings, appTitle, trayVersion, repoURL string) {
 	runtime.LockOSThread()
 
 	var w *walk.MainWindow
@@ -53,12 +53,11 @@ func runWindow(strs i18n.Strings, appTitle, trayVersion, singBoxName, singBoxVer
 		AssignTo: &w,
 		Title:    strs.MenuAbout,
 		Icon:     winIcon,
-		MinSize:  Size{Width: 340, Height: 160},
-		Size:     Size{Width: 340, Height: 160},
+		MinSize:  Size{Width: 340, Height: 130},
+		Size:     Size{Width: 340, Height: 130},
 		Layout:   VBox{Margins: Margins{Left: 12, Top: 12, Right: 12, Bottom: 12}, Spacing: 6},
 		Children: []Widget{
 			Label{Text: fmt.Sprintf("%s %s", appTitle, trayVersion)},
-			Label{Text: fmt.Sprintf(strs.AboutSingBoxVersionFmt, singBoxName, singBoxVersion)},
 			LinkLabel{
 				Text: fmt.Sprintf(`<a href="%s">%s</a>`, repoURL, repoURL),
 				OnLinkActivated: func(link *walk.LinkLabelLink) {

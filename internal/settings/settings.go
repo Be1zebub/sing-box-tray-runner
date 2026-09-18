@@ -80,7 +80,7 @@ func runWindow(cfg *config.TrayConfig, strs i18n.Strings, configNames []string, 
 
 	var w *walk.MainWindow
 	var singBoxEdit, wintunEdit, configDirEdit *walk.LineEdit
-	var launcherAutoCheck, singBoxAutoCheck, prereleaseCheck, autostartCheck *walk.CheckBox
+	var autostartCheck *walk.CheckBox
 	var langCombo, configCombo *walk.ComboBox
 
 	browseFn := func(edit **walk.LineEdit, filter string) func() {
@@ -113,9 +113,9 @@ func runWindow(cfg *config.TrayConfig, strs i18n.Strings, configNames []string, 
 		AssignTo: &w,
 		Title:    strs.SettingsTitle,
 		Icon:     winIcon,
-		Size:     Size{Width: 620, Height: 330},
-		MinSize:  Size{Width: 550, Height: 330},
-		MaxSize:  Size{Width: 900, Height: 330},
+		Size:     Size{Width: 620, Height: 250},
+		MinSize:  Size{Width: 550, Height: 250},
+		MaxSize:  Size{Width: 900, Height: 250},
 		Layout:   Grid{Columns: 3, Margins: Margins{Left: 10, Top: 10, Right: 10, Bottom: 10}, Spacing: 6},
 		Children: []Widget{
 			Label{Text: strs.SettingsSingBoxPath},
@@ -133,9 +133,6 @@ func runWindow(cfg *config.TrayConfig, strs i18n.Strings, configNames []string, 
 			Label{Text: strs.SettingsActiveConfig},
 			ComboBox{AssignTo: &configCombo, Model: configNames, CurrentIndex: configIndex(configNames, cfg.SelectedConfig), ColumnSpan: 2},
 
-			CheckBox{AssignTo: &launcherAutoCheck, Text: strs.SettingsAutoUpdateLauncher, ColumnSpan: 3, Checked: cfg.LauncherUpdate.AutoUpdate},
-			CheckBox{AssignTo: &singBoxAutoCheck, Text: strs.SettingsAutoUpdateSingBox, ColumnSpan: 3, Checked: cfg.Update.AutoUpdate},
-			CheckBox{AssignTo: &prereleaseCheck, Text: strs.UsePrereleaseLabel, ColumnSpan: 3, Checked: cfg.Update.Channel == "alpha"},
 			CheckBox{AssignTo: &autostartCheck, Text: strs.MenuAutostart, ColumnSpan: 3, Checked: autostartEnabled},
 
 			Label{Text: strs.SettingsLanguageLabel},
@@ -151,13 +148,6 @@ func runWindow(cfg *config.TrayConfig, strs i18n.Strings, configNames []string, 
 						cfg.ConfigDir = configDirEdit.Text()
 						if idx := configCombo.CurrentIndex(); idx >= 0 && idx < len(configNames) {
 							cfg.SelectedConfig = configNames[idx]
-						}
-						cfg.LauncherUpdate.AutoUpdate = launcherAutoCheck.Checked()
-						cfg.Update.AutoUpdate = singBoxAutoCheck.Checked()
-						if prereleaseCheck.Checked() {
-							cfg.Update.Channel = "alpha"
-						} else {
-							cfg.Update.Channel = "stable"
 						}
 						cfg.Language = langCodes[langCombo.CurrentIndex()]
 						cfg.Autostart = autostartCheck.Checked()

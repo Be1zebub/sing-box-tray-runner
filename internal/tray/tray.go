@@ -5,10 +5,8 @@ package tray
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sync"
-	"syscall"
 	"time"
 	"unsafe"
 
@@ -26,11 +24,9 @@ import (
 	"github.com/zelgray/sing-box-tray/internal/logwin"
 	"github.com/zelgray/sing-box-tray/internal/process"
 	"github.com/zelgray/sing-box-tray/internal/proxy"
-	"github.com/zelgray/sing-box-tray/internal/selfupdate"
 	"github.com/zelgray/sing-box-tray/internal/settings"
 	"github.com/zelgray/sing-box-tray/internal/state"
 	"github.com/zelgray/sing-box-tray/internal/tun"
-	"github.com/zelgray/sing-box-tray/internal/updater"
 	"github.com/zelgray/sing-box-tray/internal/version"
 	"github.com/zelgray/sing-box-tray/internal/watcher"
 )
@@ -38,17 +34,8 @@ import (
 const (
 	appTitle = "sing-box-tray"
 
-	singBoxOwner = "SagerNet"
-	singBoxRepo  = "sing-box"
-	singBoxName  = "sing-box"
-
-	launcherOwner     = "soksanichenko"
-	launcherRepo      = "sing-box-tray-runner"
-	launcherAssetName = "sing_box_tray_runner.exe"
-
-	// updateCheckInterval controls how often the periodic background check
-	// re-runs after the startup check in OnReady.
-	updateCheckInterval = 6 * time.Hour
+	// repoURL is this fork's own repository, shown in the About window.
+	repoURL = "https://github.com/Be1zebub/sing-box-tray-runner"
 
 	// languagesMenuTitle is deliberately not translated — it's the control
 	// that changes the language, so it must stay findable regardless of the
@@ -79,13 +66,6 @@ type menuItems struct {
 	config      *systray.MenuItem
 	configItems []*systray.MenuItem
 	configNames []string
-
-	updates             *systray.MenuItem
-	launcherCheckUpdate *systray.MenuItem
-	launcherAutoUpdate  *systray.MenuItem
-	singBoxCheckUpdate  *systray.MenuItem
-	singBoxAutoUpdate   *systray.MenuItem
-	singBoxPrerelease   *systray.MenuItem
 
 	langAuto *systray.MenuItem
 	langEN   *systray.MenuItem
@@ -170,16 +150,6 @@ func (a *App) OnReady() {
 	configItems, configNames := a.buildConfigItems(mConfig, a.cfg.ConfigDir)
 	systray.AddSeparator()
 
-	mUpdates := systray.AddMenuItem(a.strs.MenuUpdates, "")
-	mUpdatesLauncher := mUpdates.AddSubMenuItem(appTitle, "")
-	mLauncherCheck := mUpdatesLauncher.AddSubMenuItem(a.strs.MenuCheckUpdate, "")
-	mLauncherAuto := mUpdatesLauncher.AddSubMenuItemCheckbox(a.strs.MenuAutoUpdate, "", a.cfg.LauncherUpdate.AutoUpdate)
-	mUpdatesSingBox := mUpdates.AddSubMenuItem(singBoxName, "")
-	mSingBoxCheck := mUpdatesSingBox.AddSubMenuItem(a.strs.MenuCheckUpdate, "")
-	mSingBoxAuto := mUpdatesSingBox.AddSubMenuItemCheckbox(a.strs.MenuAutoUpdate, "", a.cfg.Update.AutoUpdate)
-	mSingBoxPrerelease := mUpdatesSingBox.AddSubMenuItemCheckbox(a.strs.UsePrereleaseLabel, "", a.cfg.Update.Channel == "alpha")
-	systray.AddSeparator()
-
 	mLanguages := systray.AddMenuItem(languagesMenuTitle, "")
 	mLangAuto := mLanguages.AddSubMenuItem(langLabelAuto, "")
 	mLangEN := mLanguages.AddSubMenuItem(langLabelEN, "")
@@ -219,13 +189,6 @@ func (a *App) OnReady() {
 		configItems: configItems,
 		configNames: configNames,
 
-		updates:             mUpdates,
-		launcherCheckUpdate: mLauncherCheck,
-		launcherAutoUpdate:  mLauncherAuto,
-		singBoxCheckUpdate:  mSingBoxCheck,
-		singBoxAutoUpdate:   mSingBoxAuto,
-		singBoxPrerelease:   mSingBoxPrerelease,
-
 		langAuto: mLangAuto,
 		langEN:   mLangEN,
 		langRU:   mLangRU,
@@ -249,24 +212,6 @@ func (a *App) OnReady() {
 			a.start()
 		}
 	}()
-
-	go a.checkSingBoxUpdate(false)
-	go a.checkLauncherUpdate(false)
-	go a.periodicUpdateChecks()
-}
-
-// periodicUpdateChecks re-runs the non-interactive sing-box/launcher update
-// checks every updateCheckInterval, so a tray left running for days still
-// picks up new releases without a restart. Each check behaves exactly like
-// the startup check: silent install if the relevant AutoUpdate setting is
-// on, otherwise just a toast.
-func (a *App) periodicUpdateChecks() {
-	ticker := time.NewTicker(updateCheckInterval)
-	defer ticker.Stop()
-	for range ticker.C {
-		a.checkSingBoxUpdate(false)
-		a.checkLauncherUpdate(false)
-	}
 }
 
 func (a *App) OnExit() {
@@ -594,12 +539,6 @@ func (a *App) toggleAutostart() {
 	_ = a.cfg.Save(a.exeDir)
 }
 
-// managedSingBoxRoot is the directory the updater installs sing-box versions
-// into, as managedRoot/<tag>/sing-box.exe.
-func (a *App) managedSingBoxRoot() string {
-	return filepath.Join(a.exeDir, "sing-box")
-}
-
 // checkFirstRunDeps first reconciles sing_box_path, wintun_dll_path, and the
 // active config against exeDir (see config.ReconcilePaths — this recovers
 // automatically if the tray was moved to a new folder alongside its
@@ -622,275 +561,18 @@ func (a *App) checkFirstRunDeps() {
 		infoBox(fmt.Sprintf(a.strs.DialogMissingConfigFmt, a.cfg.ActiveConfigPath()), appTitle)
 	}
 	if missingSingBox {
-		a.offerSingBoxDownload()
+		infoBox(fmt.Sprintf(a.strs.DialogMissingSingBoxFmt, a.cfg.SingBoxPath), appTitle)
 	}
 	if missingWintun {
-		a.offerWintunDownload()
+		infoBox(fmt.Sprintf(a.strs.DialogMissingWintunFmt, a.cfg.WintunDllPath), appTitle)
 	}
 }
 
-// offerSingBoxDownload prompts the user and, if accepted, fetches and
-// installs the latest sing-box release via the same path the updater uses.
-func (a *App) offerSingBoxDownload() {
-	if !msgBox(fmt.Sprintf(a.strs.DialogMissingSingBoxFmt, a.cfg.SingBoxPath), appTitle) {
-		return
-	}
-	rel, err := updater.FetchLatest(singBoxOwner, singBoxRepo, a.cfg.Update.Channel)
-	if err != nil {
-		a.log("sing-box download failed: %s", err)
-		infoBox(fmt.Sprintf(a.strs.DialogErrorFmt, err), appTitle)
-		return
-	}
-	a.installSingBoxUpdate(rel, true)
-}
-
-// offerWintunDownload prompts the user and, if accepted, downloads
-// wintun.dll from wintun.net straight to a.cfg.WintunDllPath.
-func (a *App) offerWintunDownload() {
-	if !msgBox(fmt.Sprintf(a.strs.DialogMissingWintunFmt, a.cfg.WintunDllPath), appTitle) {
-		return
-	}
-	a.log("downloading wintun.dll")
-	if err := updater.DownloadWintunDll(a.cfg.WintunDllPath); err != nil {
-		a.log("wintun.dll download failed: %s", err)
-		infoBox(fmt.Sprintf(a.strs.DialogWintunManualFmt, err, updater.WintunDownloadURL, a.cfg.WintunDllPath), appTitle)
-		return
-	}
-	a.log("wintun.dll downloaded to %s", a.cfg.WintunDllPath)
-}
-
-// showAbout displays the tray launcher and sing-box versions plus a
-// clickable link to the project repository. The sing-box version is derived
-// the same way the updater does (InstalledVersion), so it only shows a real
-// version if sing_box_path currently points into the tray-managed
-// sing-box/<tag>/ folder — a hand-picked or not-yet-updated binary shows as
-// "unknown". A plain MessageBox can't have a clickable link, so this opens a
-// small walk window (aboutwin) instead of using infoBox.
+// showAbout displays the tray launcher version plus a clickable link to the
+// project repository. A plain MessageBox can't have a clickable link, so this
+// opens a small walk window (aboutwin) instead of using infoBox.
 func (a *App) showAbout() {
-	singBoxVersion := updater.InstalledVersion(a.cfg.SingBoxPath, a.managedSingBoxRoot())
-	if singBoxVersion == "" {
-		singBoxVersion = a.strs.DialogVersionUnknown
-	}
-	repoURL := fmt.Sprintf("https://github.com/%s/%s", launcherOwner, launcherRepo)
-	aboutwin.Show(a.strs, appTitle, version.Version, singBoxName, singBoxVersion, repoURL)
-}
-
-// checkSingBoxUpdate fetches the latest sing-box release for the configured
-// channel. When interactive is false (startup check), it installs silently
-// if cfg.Update.AutoUpdate is set, otherwise it only pushes a toast if a
-// different version is available. When interactive is true (manual "Check
-// for Updates" click) it always prompts via a Yes/No dialog before installing.
-func (a *App) checkSingBoxUpdate(interactive bool) {
-	rel, err := updater.FetchLatest(singBoxOwner, singBoxRepo, a.cfg.Update.Channel)
-	if err != nil {
-		a.log("sing-box update check failed: %s", err)
-		if interactive {
-			infoBox(fmt.Sprintf(a.strs.DialogErrorFmt, err), appTitle)
-		}
-		return
-	}
-
-	installed := updater.InstalledVersion(a.cfg.SingBoxPath, a.managedSingBoxRoot())
-	if installed == rel.Tag {
-		a.log("sing-box up to date (%s)", rel.Tag)
-		if interactive {
-			infoBox(fmt.Sprintf(a.strs.DialogUpdateNoneFmt, singBoxName, rel.Tag), appTitle)
-		}
-		return
-	}
-
-	a.log("sing-box update available: %s -> %s", installed, rel.Tag)
-
-	if !interactive {
-		if a.cfg.Update.AutoUpdate {
-			a.log("auto-update: installing sing-box %s", rel.Tag)
-			a.installSingBoxUpdate(rel, true)
-			return
-		}
-		n := toast.Notification{
-			AppID:   appTitle,
-			Title:   a.strs.ToastUpdateTitle,
-			Message: fmt.Sprintf(a.strs.ToastUpdateMsgFmt, singBoxName, rel.Tag),
-		}
-		_ = n.Push()
-		return
-	}
-
-	current := installed
-	if current == "" {
-		current = a.strs.DialogVersionUnknown
-	}
-	if !msgBox(fmt.Sprintf(a.strs.DialogUpdateAvailableFmt, singBoxName, rel.Tag, current), appTitle) {
-		return
-	}
-	a.installSingBoxUpdate(rel, false)
-}
-
-// installSingBoxUpdate downloads rel into the managed sing-box folder and
-// switches the config to point at it. When silent is true (auto-update), a
-// running sing-box is restarted without prompting; otherwise a Yes/No dialog
-// asks first.
-func (a *App) installSingBoxUpdate(rel *updater.Release, silent bool) {
-	asset, err := rel.WindowsAmd64Asset()
-	if err != nil {
-		a.log("sing-box update failed: %s", err)
-		if !silent {
-			infoBox(fmt.Sprintf(a.strs.DialogErrorFmt, err), appTitle)
-		}
-		return
-	}
-
-	a.log("downloading sing-box %s", rel.Tag)
-	exePath, err := updater.DownloadAndInstall(rel, asset, a.managedSingBoxRoot())
-	if err != nil {
-		a.log("sing-box update failed: %s", err)
-		if !silent {
-			infoBox(fmt.Sprintf(a.strs.DialogErrorFmt, err), appTitle)
-		}
-		return
-	}
-
-	a.cfg.SingBoxPath = exePath
-	a.proc.SetSingBoxPath(exePath)
-	if err := a.cfg.Save(a.exeDir); err != nil {
-		a.log("save config after update: %s", err)
-	}
-	a.log("sing-box updated to %s", rel.Tag)
-
-	if !a.proc.IsRunning() {
-		return
-	}
-	if silent {
-		a.log("auto-update: restarting sing-box")
-		go func() { a.stop(); a.start() }()
-		return
-	}
-	if msgBox(fmt.Sprintf(a.strs.DialogRestartNowFmt, rel.Tag), appTitle) {
-		go func() { a.stop(); a.start() }()
-	}
-}
-
-// checkLauncherUpdate fetches the latest tray launcher release from its own
-// repo. When interactive is false (startup check), it self-updates silently
-// if cfg.LauncherUpdate.AutoUpdate is set, otherwise it only pushes a toast.
-// When interactive is true it prompts via a Yes/No dialog first.
-func (a *App) checkLauncherUpdate(interactive bool) {
-	rel, err := updater.FetchLatest(launcherOwner, launcherRepo, "stable")
-	if err != nil {
-		a.log("tray launcher update check failed: %s", err)
-		if interactive {
-			infoBox(fmt.Sprintf(a.strs.DialogErrorFmt, err), appTitle)
-		}
-		return
-	}
-
-	if version.Version == rel.Tag {
-		a.log("tray launcher up to date (%s)", rel.Tag)
-		if interactive {
-			infoBox(fmt.Sprintf(a.strs.DialogUpdateNoneFmt, appTitle, rel.Tag), appTitle)
-		}
-		return
-	}
-
-	a.log("tray launcher update available: %s -> %s", version.Version, rel.Tag)
-
-	if !interactive {
-		if a.cfg.LauncherUpdate.AutoUpdate {
-			a.log("auto-update: installing tray launcher %s", rel.Tag)
-			a.installLauncherUpdate(rel)
-			return
-		}
-		n := toast.Notification{
-			AppID:   appTitle,
-			Title:   a.strs.ToastUpdateTitle,
-			Message: fmt.Sprintf(a.strs.ToastUpdateMsgFmt, appTitle, rel.Tag),
-		}
-		_ = n.Push()
-		return
-	}
-
-	if !msgBox(fmt.Sprintf(a.strs.DialogUpdateAvailableFmt, appTitle, rel.Tag, version.Version), appTitle) {
-		return
-	}
-	a.installLauncherUpdate(rel)
-}
-
-// installLauncherUpdate downloads the launcher's own release asset next to
-// the running exe (same volume — required for the rename in selfupdate.Apply
-// to work), stops sing-box if it's running (it would otherwise be orphaned
-// once this process exits), swaps the exe, and relaunches. Mirrors the
-// spawn-then-release-mutex-then-exit sequence already used by the UAC
-// elevation relaunch in start().
-func (a *App) installLauncherUpdate(rel *updater.Release) {
-	asset, err := rel.AssetNamed(launcherAssetName)
-	if err != nil {
-		a.log("tray launcher update failed: %s", err)
-		infoBox(fmt.Sprintf(a.strs.DialogErrorFmt, err), appTitle)
-		return
-	}
-
-	exePath, err := os.Executable()
-	if err != nil {
-		a.log("tray launcher update failed: %s", err)
-		infoBox(fmt.Sprintf(a.strs.DialogErrorFmt, err), appTitle)
-		return
-	}
-	newPath := exePath + ".new"
-
-	a.log("downloading tray launcher %s", rel.Tag)
-	if err := updater.DownloadFile(asset.URL, newPath); err != nil {
-		a.log("tray launcher update failed: %s", err)
-		infoBox(fmt.Sprintf(a.strs.DialogErrorFmt, err), appTitle)
-		return
-	}
-
-	if a.proc.IsRunning() {
-		a.log("stopping sing-box before tray launcher self-update")
-		a.stop()
-	}
-
-	if err := selfupdate.Apply(exePath, newPath); err != nil {
-		a.log("tray launcher update failed: %s", err)
-		infoBox(fmt.Sprintf(a.strs.DialogErrorFmt, err), appTitle)
-		return
-	}
-
-	a.log("tray launcher updated to %s, relaunching", rel.Tag)
-	cmd := exec.Command(exePath)
-	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NO_WINDOW}
-	if err := cmd.Start(); err != nil {
-		a.log("relaunch failed: %s", err)
-		infoBox(fmt.Sprintf(a.strs.DialogErrorFmt, err), appTitle)
-		return
-	}
-	a.releaseMutex() // Release mutex before exit so the new instance can acquire it.
-	os.Exit(0)
-}
-
-func (a *App) toggleLauncherAutoUpdate() {
-	a.cfg.LauncherUpdate.AutoUpdate = !a.cfg.LauncherUpdate.AutoUpdate
-	checkOrUncheck(a.items.launcherAutoUpdate, a.cfg.LauncherUpdate.AutoUpdate)
-	_ = a.cfg.Save(a.exeDir)
-	a.log("tray launcher auto-update: %v", a.cfg.LauncherUpdate.AutoUpdate)
-}
-
-func (a *App) toggleSingBoxAutoUpdate() {
-	a.cfg.Update.AutoUpdate = !a.cfg.Update.AutoUpdate
-	checkOrUncheck(a.items.singBoxAutoUpdate, a.cfg.Update.AutoUpdate)
-	_ = a.cfg.Save(a.exeDir)
-	a.log("sing-box auto-update: %v", a.cfg.Update.AutoUpdate)
-}
-
-func (a *App) toggleSingBoxPrerelease() {
-	if a.cfg.Update.Channel == "alpha" {
-		a.cfg.Update.Channel = "stable"
-	} else {
-		a.cfg.Update.Channel = "alpha"
-	}
-	checkOrUncheck(a.items.singBoxPrerelease, a.cfg.Update.Channel == "alpha")
-	_ = a.cfg.Save(a.exeDir)
-	a.log("sing-box update channel: %s", a.cfg.Update.Channel)
-	a.checkSingBoxUpdate(true)
+	aboutwin.Show(a.strs, appTitle, version.Version, repoURL)
 }
 
 // applyLanguage recomputes a.strs for langCode, retitles the menu, and
@@ -934,12 +616,6 @@ func (a *App) refreshMenuTexts() {
 	a.items.modeProxy.SetTitle(a.strs.ModeSystemProxy)
 	a.items.modeTUN.SetTitle(a.strs.ModeTUN)
 	a.items.config.SetTitle(a.strs.MenuConfig)
-	a.items.updates.SetTitle(a.strs.MenuUpdates)
-	a.items.launcherCheckUpdate.SetTitle(a.strs.MenuCheckUpdate)
-	a.items.launcherAutoUpdate.SetTitle(a.strs.MenuAutoUpdate)
-	a.items.singBoxCheckUpdate.SetTitle(a.strs.MenuCheckUpdate)
-	a.items.singBoxAutoUpdate.SetTitle(a.strs.MenuAutoUpdate)
-	a.items.singBoxPrerelease.SetTitle(a.strs.UsePrereleaseLabel)
 	a.items.autostart.SetTitle(a.strs.MenuAutostart)
 	a.items.autostart.SetTooltip(a.strs.MenuAutostartTip)
 	a.items.viewLogs.SetTitle(a.strs.MenuViewLogs)
@@ -951,7 +627,6 @@ func (a *App) openSettings() {
 	prevLang := a.cfg.Language
 	prevConfigDir := a.cfg.ConfigDir
 	prevSelectedConfig := a.cfg.SelectedConfig
-	prevChannel := a.cfg.Update.Channel
 	prevAutostart := autostart.IsEnabled()
 	settings.Show(a.cfg, a.strs, a.items.configNames, prevAutostart, func(updated *config.TrayConfig) {
 		a.log("settings saved: sing-box=%s config=%s", updated.SingBoxPath, updated.ActiveConfigPath())
@@ -985,13 +660,6 @@ func (a *App) openSettings() {
 		case updated.SelectedConfig != prevSelectedConfig:
 			setConfigChecks(a.items.configItems, a.items.configNames, updated.SelectedConfig)
 			a.restartConfigWatcher()
-		}
-		// Keep the tray menu checkboxes in sync with whatever Settings changed.
-		checkOrUncheck(a.items.launcherAutoUpdate, updated.LauncherUpdate.AutoUpdate)
-		checkOrUncheck(a.items.singBoxAutoUpdate, updated.Update.AutoUpdate)
-		checkOrUncheck(a.items.singBoxPrerelease, updated.Update.Channel == "alpha")
-		if updated.Update.Channel != prevChannel {
-			go a.checkSingBoxUpdate(true)
 		}
 	})
 }
@@ -1125,16 +793,6 @@ func (a *App) handleClicks() {
 			go a.switchMode(state.ModeSystemProxy)
 		case <-a.items.modeTUN.ClickedCh:
 			go a.switchMode(state.ModeTUN)
-		case <-a.items.launcherCheckUpdate.ClickedCh:
-			go a.checkLauncherUpdate(true)
-		case <-a.items.launcherAutoUpdate.ClickedCh:
-			go a.toggleLauncherAutoUpdate()
-		case <-a.items.singBoxCheckUpdate.ClickedCh:
-			go a.checkSingBoxUpdate(true)
-		case <-a.items.singBoxAutoUpdate.ClickedCh:
-			go a.toggleSingBoxAutoUpdate()
-		case <-a.items.singBoxPrerelease.ClickedCh:
-			go a.toggleSingBoxPrerelease()
 		case <-a.items.langAuto.ClickedCh:
 			go a.switchLanguage("auto")
 		case <-a.items.langEN.ClickedCh:

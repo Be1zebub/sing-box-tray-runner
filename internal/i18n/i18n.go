@@ -39,9 +39,6 @@ type Strings struct {
 	MenuConfig       string `json:"menu_config"`
 	MenuAutostart    string `json:"menu_autostart"`
 	MenuAutostartTip string `json:"menu_autostart_tip"`
-	MenuUpdates      string `json:"menu_updates"`
-	MenuCheckUpdate  string `json:"menu_check_update"`
-	MenuAutoUpdate   string `json:"menu_auto_update"`
 	MenuViewLogs     string `json:"menu_view_logs"`
 	MenuAbout        string `json:"menu_about"`
 	MenuExit         string `json:"menu_exit"`
@@ -52,34 +49,22 @@ type Strings struct {
 
 	ToastCrashedTitle string `json:"toast_crashed_title"`
 	ToastCrashedMsg   string `json:"toast_crashed_msg"`
-	ToastUpdateTitle  string `json:"toast_update_title"`
-	ToastUpdateMsgFmt string `json:"toast_update_msg_fmt"`
 
-	DialogConfigChangedFmt   string `json:"dialog_config_changed_fmt"`
-	DialogUpdateAvailableFmt string `json:"dialog_update_available_fmt"`
-	DialogUpdateNoneFmt      string `json:"dialog_update_none_fmt"`
-	DialogRestartNowFmt      string `json:"dialog_restart_now_fmt"`
-	DialogErrorFmt           string `json:"dialog_error_fmt"`
-	DialogVersionUnknown     string `json:"dialog_version_unknown"`
-	DialogMissingSingBoxFmt  string `json:"dialog_missing_sing_box_fmt"`
-	DialogMissingWintunFmt   string `json:"dialog_missing_wintun_fmt"`
-	DialogWintunManualFmt    string `json:"dialog_wintun_manual_fmt"`
-	DialogMissingConfigFmt   string `json:"dialog_missing_config_fmt"`
+	DialogConfigChangedFmt  string `json:"dialog_config_changed_fmt"`
+	DialogErrorFmt          string `json:"dialog_error_fmt"`
+	DialogMissingSingBoxFmt string `json:"dialog_missing_sing_box_fmt"`
+	DialogMissingWintunFmt  string `json:"dialog_missing_wintun_fmt"`
+	DialogMissingConfigFmt  string `json:"dialog_missing_config_fmt"`
 
-	AboutSingBoxVersionFmt string `json:"about_sing_box_version_fmt"`
-
-	SettingsTitle              string `json:"settings_title"`
-	SettingsSingBoxPath        string `json:"settings_sing_box_path"`
-	SettingsWintunPath         string `json:"settings_wintun_path"`
-	SettingsConfigDir          string `json:"settings_config_dir"`
-	SettingsActiveConfig       string `json:"settings_active_config"`
-	SettingsBrowse             string `json:"settings_browse"`
-	SettingsAutoUpdateLauncher string `json:"settings_auto_update_launcher"`
-	SettingsAutoUpdateSingBox  string `json:"settings_auto_update_singbox"`
-	UsePrereleaseLabel         string `json:"use_prerelease_label"`
-	SettingsLanguageLabel      string `json:"settings_language_label"`
-	SettingsSave               string `json:"settings_save"`
-	SettingsCancel             string `json:"settings_cancel"`
+	SettingsTitle         string `json:"settings_title"`
+	SettingsSingBoxPath   string `json:"settings_sing_box_path"`
+	SettingsWintunPath    string `json:"settings_wintun_path"`
+	SettingsConfigDir     string `json:"settings_config_dir"`
+	SettingsActiveConfig  string `json:"settings_active_config"`
+	SettingsBrowse        string `json:"settings_browse"`
+	SettingsLanguageLabel string `json:"settings_language_label"`
+	SettingsSave          string `json:"settings_save"`
+	SettingsCancel        string `json:"settings_cancel"`
 
 	LogWindowTitle string `json:"log_window_title"`
 
