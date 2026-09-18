@@ -19,6 +19,14 @@ import (
 // appended. Prepends a process-exclusion route rule so sing-box's own traffic
 // is not looped back through TUN, writes the result to a temp file, and
 // returns its path.
+//
+// The injected tun inbound always carries an IPv6 address in addition to the
+// IPv4 one: with strict_route enabled, sing-tun installs an unconditional WFP
+// block filter on the IPv6 connect layer when the interface has no IPv6
+// address, which blackholes ::1 and breaks anything that resolves localhost
+// to IPv6 (Node/Vite, Next, etc.). route_address stays IPv4-only so no IPv6
+// default route is added, and route_exclude_address keeps loopback, private
+// and link-local traffic out of the tunnel.
 func InjectTUN(sbConfigPath string, cfg config.TUNConfig, singBoxPath string) (string, error) {
 	root, err := config.LoadRawSingBoxConfig(sbConfigPath)
 	if err != nil {
@@ -67,10 +75,35 @@ func EnsureWintunDll(src, dstDir string) error {
 	return copyFile(src, dst)
 }
 
+// Defaults used when tray-config.json leaves the corresponding tun.* field
+// empty. tun.address MUST include an IPv6 address — see InjectTUN for why.
+var (
+	defaultTUNAddress = []string{"172.19.0.1/30", "fdfe:dcba:9876::1/126"}
+
+	// IPv4-only on purpose: an IPv6 entry here would make auto_route install
+	// an IPv6 default route, and direct IPv6 traffic could re-enter the TUN.
+	defaultRouteAddress = []string{"0.0.0.0/1", "128.0.0.0/1"}
+
+	// Loopback, RFC1918 and link-local, kept out of the tunnel entirely.
+	defaultRouteExcludeAddress = []string{
+		"127.0.0.0/8", "::1/128",
+		"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16",
+		"fc00::/7", "fe80::/10", "ff00::/8",
+	}
+)
+
 func buildTUNInbound(cfg config.TUNConfig) map[string]any {
 	addr := cfg.Address
 	if len(addr) == 0 {
-		addr = []string{"172.19.0.1/30"}
+		addr = defaultTUNAddress
+	}
+	routeAddr := cfg.RouteAddress
+	if len(routeAddr) == 0 {
+		routeAddr = defaultRouteAddress
+	}
+	routeExclude := cfg.RouteExcludeAddress
+	if len(routeExclude) == 0 {
+		routeExclude = defaultRouteExcludeAddress
 	}
 	mtu := cfg.MTU
 	if mtu == 0 {
@@ -81,13 +114,15 @@ func buildTUNInbound(cfg config.TUNConfig) map[string]any {
 		name = "singbox-tun"
 	}
 	return map[string]any{
-		"type":           "tun",
-		"tag":            "tun-in",
-		"interface_name": name,
-		"address":        addr,
-		"mtu":            mtu,
-		"auto_route":     true,
-		"strict_route":   true,
+		"type":                  "tun",
+		"tag":                   "tun-in",
+		"interface_name":        name,
+		"address":               addr,
+		"mtu":                   mtu,
+		"auto_route":            true,
+		"strict_route":          true,
+		"route_address":         routeAddr,
+		"route_exclude_address": routeExclude,
 	}
 }
 

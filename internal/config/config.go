@@ -41,9 +41,11 @@ type SystemProxyConfig struct {
 }
 
 type TUNConfig struct {
-	InterfaceName string   `json:"interface_name"`
-	Address       []string `json:"address"`
-	MTU           int      `json:"mtu"`
+	InterfaceName       string   `json:"interface_name"`
+	Address             []string `json:"address"`
+	RouteAddress        []string `json:"route_address"`
+	RouteExcludeAddress []string `json:"route_exclude_address"`
+	MTU                 int      `json:"mtu"`
 }
 
 func Load(exeDir string) (*TrayConfig, error) {
