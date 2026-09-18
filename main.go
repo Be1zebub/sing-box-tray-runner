@@ -32,7 +32,12 @@ func main() {
 	namePtr, _ := windows.UTF16PtrFromString(mutexName)
 	h, err := windows.CreateMutex(nil, false, namePtr)
 	if err != nil {
-		if err == windows.ERROR_ALREADY_EXISTS {
+		// ERROR_ALREADY_EXISTS: the mutex exists and we could open it.
+		// ERROR_ACCESS_DENIED: the mutex exists but was created by an elevated
+		// instance whose DACL we can't open — CreateMutex reports this instead
+		// of ERROR_ALREADY_EXISTS. Either way another instance is already
+		// running, so exit quietly rather than showing a startup error.
+		if err == windows.ERROR_ALREADY_EXISTS || err == windows.ERROR_ACCESS_DENIED {
 			os.Exit(0)
 		}
 		showError(fmt.Sprintf(strs.StartupErrMutexFmt, err))
