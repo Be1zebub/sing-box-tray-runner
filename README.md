@@ -1,5 +1,3 @@
-<img src="assets/icons/logo.png" width="96" alt="sing-box-tray icon">
-
 # sing-box-tray
 
 A minimal Windows system tray launcher for [sing-box](https://sing-box.sagernet.org/).
@@ -7,6 +5,17 @@ A minimal Windows system tray launcher for [sing-box](https://sing-box.sagernet.
 Personal fork of `soksanichenko/sing-box-tray-runner` (upstream).
 Unlike upstream, this fork **has no updater**: it makes no network requests at all, and
 `sing-box.exe`/`wintun.dll` are placed by hand (see [Runtime requirements](#runtime-requirements)).
+
+<img src="assets/showcase.png" width="411" alt="showcase">
+
+<img src="assets/icons/logo.png" width="64" alt="sing-box-tray icon">
+
+## Why
+
+Auto updater was a Supply-chain surface.  
+Self-replacement of the running exe, Silent unattended updates by default (alpha channel, auto_update: true),  
+Persistent elevated RCE (/SC ONLOGON + /RL HIGHEST), Second-order CI supply chain (mutable action tags → published release),  
+Unverified wintun.dll into an elevated process, Fork pulling upstream's repo. Removed → zero network egress.
 
 ## Features
 
@@ -51,6 +60,7 @@ Only the Go toolchain is needed, on either host platform — no C compiler, no W
 2. On first launch, `tray-config.json` is created next to the executable with default values.
 3. Right-click the tray icon → **Settings...** and set the paths.
 4. Download `sing-box.exe` (and `wintun.dll` if you want TUN mode) yourself and put them where the paths point.
+5. Place your singbox config's in `config_dir` (see `tray-config.json`, default value is `"."`)
 
 ## Configuration
 
@@ -58,49 +68,55 @@ Only the Go toolchain is needed, on either host platform — no C compiler, no W
 
 ```json
 {
-  "sing_box_path": "sing-box.exe",
-  "wintun_dll_path": "wintun.dll",
-  "config_dir": ".",
-  "selected_config": "config.json",
-  "system_proxy_inbound": "",
-  "autostart": false,
-  "default_mode": "tun",
-  "start_on_launch": false,
-  "log_lines": 200,
-  "language": "auto",
-  "system_proxy": {
-    "tag": "mixed-in",
-    "listen": "127.0.0.1",
-    "listen_port": 2080
-  },
-  "tun": {
-    "interface_name": "singbox-tun",
-    "address": ["172.19.0.1/30", "fdfe:dcba:9876::1/126"],
-    "route_address": ["0.0.0.0/1", "128.0.0.0/1"],
-    "route_exclude_address": [
-      "127.0.0.0/8", "::1/128",
-      "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16",
-      "fc00::/7", "fe80::/10", "ff00::/8"
-    ],
-    "mtu": 9000
-  }
+	"sing_box_path": "sing-box.exe",
+	"wintun_dll_path": "wintun.dll",
+	"config_dir": ".",
+	"selected_config": "config.json",
+	"system_proxy_inbound": "",
+	"autostart": false,
+	"default_mode": "tun",
+	"start_on_launch": false,
+	"log_lines": 200,
+	"language": "auto",
+	"system_proxy": {
+		"tag": "mixed-in",
+		"listen": "127.0.0.1",
+		"listen_port": 2080
+	},
+	"tun": {
+		"interface_name": "singbox-tun",
+		"address": ["172.19.0.1/30", "fdfe:dcba:9876::1/126"],
+		"route_address": ["0.0.0.0/1", "128.0.0.0/1"],
+		"route_exclude_address": [
+			"127.0.0.0/8",
+			"::1/128",
+			"10.0.0.0/8",
+			"172.16.0.0/12",
+			"192.168.0.0/16",
+			"169.254.0.0/16",
+			"fc00::/7",
+			"fe80::/10",
+			"ff00::/8"
+		],
+		"mtu": 9000
+	}
 }
 ```
 
-| Field | Description |
-|---|---|
-| `sing_box_path` | Path to `sing-box.exe`. Relative paths are resolved from the tray exe directory. |
-| `wintun_dll_path` | Path to `wintun.dll`. Copied next to `sing-box.exe` on TUN start if not already present. |
-| `config_dir` | Folder scanned (non-recursively) for `*.json` sing-box configs; the tray's **Config** submenu and the Settings config dropdown both list what's found here. |
-| `selected_config` | File name (inside `config_dir`) of the currently active sing-box config. This file is never modified. |
-| `system_proxy_inbound` | Tag of the `http` or `mixed` inbound to read the proxy address from. Leave empty to use the first one found. |
-| `autostart` | Kept in sync with the "Autostart" checkbox in the tray menu and in Settings (whether the registry `Run` value or Task Scheduler task exists); not meant to be hand-edited. |
-| `default_mode` | Starting mode: `off`, `system_proxy`, or `tun`. |
-| `start_on_launch` | If `true`, sing-box starts automatically when the tray app launches. |
-| `log_lines` | Size of the in-memory log buffer shown in the log viewer. |
-| `language` | UI language: `auto` (detect from Windows), `en`, `ru`, or `ua`. |
-| `system_proxy.*` | Default `mixed` inbound injected when running in System Proxy mode and the base `config.json` has none. |
-| `tun.*` | TUN settings injected at runtime, overriding the built-in defaults. The base `config.json` does not need a TUN section. See [TUN mode](#tun-mode). |
+| Field                  | Description                                                                                                                                                                |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sing_box_path`        | Path to `sing-box.exe`. Relative paths are resolved from the tray exe directory.                                                                                           |
+| `wintun_dll_path`      | Path to `wintun.dll`. Copied next to `sing-box.exe` on TUN start if not already present.                                                                                   |
+| `config_dir`           | Folder scanned (non-recursively) for `*.json` sing-box configs; the tray's **Config** submenu and the Settings config dropdown both list what's found here.                |
+| `selected_config`      | File name (inside `config_dir`) of the currently active sing-box config. This file is never modified.                                                                      |
+| `system_proxy_inbound` | Tag of the `http` or `mixed` inbound to read the proxy address from. Leave empty to use the first one found.                                                               |
+| `autostart`            | Kept in sync with the "Autostart" checkbox in the tray menu and in Settings (whether the registry `Run` value or Task Scheduler task exists); not meant to be hand-edited. |
+| `default_mode`         | Starting mode: `off`, `system_proxy`, or `tun`.                                                                                                                            |
+| `start_on_launch`      | If `true`, sing-box starts automatically when the tray app launches.                                                                                                       |
+| `log_lines`            | Size of the in-memory log buffer shown in the log viewer.                                                                                                                  |
+| `language`             | UI language: `auto` (detect from Windows), `en`, `ru`, or `ua`.                                                                                                            |
+| `system_proxy.*`       | Default `mixed` inbound injected when running in System Proxy mode and the base `config.json` has none.                                                                    |
+| `tun.*`                | TUN settings injected at runtime, overriding the built-in defaults. The base `config.json` does not need a TUN section. See [TUN mode](#tun-mode).                         |
 
 ### Config
 
