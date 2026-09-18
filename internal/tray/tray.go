@@ -542,9 +542,10 @@ func (a *App) toggleAutostart() {
 // checkFirstRunDeps first reconciles sing_box_path, wintun_dll_path, and the
 // active config against exeDir (see config.ReconcilePaths — this recovers
 // automatically if the tray was moved to a new folder alongside its
-// companion files, e.g. after a manual reinstall), then offers to download
-// whichever of sing-box.exe/wintun.dll is still missing and warns if no
-// usable config was found (a config can't be auto-downloaded). Runs on every
+// companion files, e.g. after a manual reinstall), then warns about whichever
+// of sing-box.exe/wintun.dll is still missing, naming the exact path the file
+// must be placed at, and warns if no usable config was found. Nothing is ever
+// downloaded — installing these files is a manual step. Runs on every
 // startup, but is only ever actionable on a fresh install or after a path
 // went stale, since all checks are no-ops once the files exist.
 func (a *App) checkFirstRunDeps() {
@@ -561,9 +562,11 @@ func (a *App) checkFirstRunDeps() {
 		infoBox(fmt.Sprintf(a.strs.DialogMissingConfigFmt, a.cfg.ActiveConfigPath()), appTitle)
 	}
 	if missingSingBox {
+		a.log("sing-box.exe missing at %s", a.cfg.SingBoxPath)
 		infoBox(fmt.Sprintf(a.strs.DialogMissingSingBoxFmt, a.cfg.SingBoxPath), appTitle)
 	}
 	if missingWintun {
+		a.log("wintun.dll missing at %s", a.cfg.WintunDllPath)
 		infoBox(fmt.Sprintf(a.strs.DialogMissingWintunFmt, a.cfg.WintunDllPath), appTitle)
 	}
 }

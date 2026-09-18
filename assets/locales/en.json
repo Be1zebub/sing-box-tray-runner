@@ -27,8 +27,8 @@
 
   "dialog_config_changed_fmt": "%s changed.\nRestart sing-box to apply changes?",
   "dialog_error_fmt": "%s",
-  "dialog_missing_sing_box_fmt": "sing-box.exe was not found at:\n%s\n\nDownload the latest version now?",
-  "dialog_missing_wintun_fmt": "wintun.dll was not found at:\n%s\n\nIt is required for TUN mode. Download it now?",
+  "dialog_missing_sing_box_fmt": "sing-box.exe was not found at:\n%s\n\nDownload a sing-box release manually and place sing-box.exe at that path.",
+  "dialog_missing_wintun_fmt": "wintun.dll was not found at:\n%s\n\nIt is required for TUN mode. Download wintun.dll from wintun.net and place it at that path.",
   "dialog_missing_config_fmt": "No sing-box config file was found at:\n%s\n\nPlace a config file there, or pick a different one in Settings.",
 
   "settings_title": "sing-box-tray — Settings",

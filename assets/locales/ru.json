@@ -27,8 +27,8 @@
 
   "dialog_config_changed_fmt": "%s изменён.\nПерезапустить sing-box, чтобы применить изменения?",
   "dialog_error_fmt": "%s",
-  "dialog_missing_sing_box_fmt": "Файл sing-box.exe не найден по пути:\n%s\n\nСкачать последнюю версию сейчас?",
-  "dialog_missing_wintun_fmt": "Файл wintun.dll не найден по пути:\n%s\n\nОн необходим для режима TUN. Скачать его сейчас?",
+  "dialog_missing_sing_box_fmt": "Файл sing-box.exe не найден по пути:\n%s\n\nСкачайте релиз sing-box вручную и поместите sing-box.exe по этому пути.",
+  "dialog_missing_wintun_fmt": "Файл wintun.dll не найден по пути:\n%s\n\nОн необходим для режима TUN. Скачайте wintun.dll с wintun.net и поместите его по этому пути.",
   "dialog_missing_config_fmt": "Не найден конфигурационный файл sing-box по пути:\n%s\n\nПоместите файл конфигурации туда или выберите другой в настройках.",
 
   "settings_title": "sing-box-tray — Настройки",
