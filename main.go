@@ -12,11 +12,11 @@ import (
 	"github.com/getlantern/systray"
 	"golang.org/x/sys/windows"
 
-	"github.com/zelgray/sing-box-tray/internal/config"
-	"github.com/zelgray/sing-box-tray/internal/elevation"
-	"github.com/zelgray/sing-box-tray/internal/i18n"
-	"github.com/zelgray/sing-box-tray/internal/state"
-	"github.com/zelgray/sing-box-tray/internal/tray"
+	"github.com/Be1zebub/sing-box-tray-runner/internal/config"
+	"github.com/Be1zebub/sing-box-tray-runner/internal/elevation"
+	"github.com/Be1zebub/sing-box-tray-runner/internal/i18n"
+	"github.com/Be1zebub/sing-box-tray-runner/internal/state"
+	"github.com/Be1zebub/sing-box-tray-runner/internal/tray"
 )
 
 const mutexName = "Global\\SingBoxTray"

@@ -8,7 +8,7 @@ OUTPUT="build/sing_box_tray_runner.exe"
 
 LDFLAGS="-H windowsgui -s -w"
 if [ -n "${VERSION:-}" ]; then
-	LDFLAGS="$LDFLAGS -X github.com/zelgray/sing-box-tray/internal/version.Version=$VERSION"
+	LDFLAGS="$LDFLAGS -X github.com/Be1zebub/sing-box-tray-runner/internal/version.Version=$VERSION"
 fi
 
 mkdir -p build

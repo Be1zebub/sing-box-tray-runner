@@ -12,7 +12,7 @@ import (
 
 	"github.com/lxn/walk"
 
-	"github.com/zelgray/sing-box-tray/assets"
+	"github.com/Be1zebub/sing-box-tray-runner/assets"
 )
 
 var (

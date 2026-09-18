@@ -13,7 +13,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
-	"github.com/zelgray/sing-box-tray/internal/logbuf"
+	"github.com/Be1zebub/sing-box-tray-runner/internal/logbuf"
 )
 
 // Manager owns the sing-box child process lifecycle.

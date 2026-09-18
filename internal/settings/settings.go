@@ -10,9 +10,9 @@ import (
 	. "github.com/lxn/walk/declarative"
 	"github.com/lxn/win"
 
-	"github.com/zelgray/sing-box-tray/internal/appicon"
-	"github.com/zelgray/sing-box-tray/internal/config"
-	"github.com/zelgray/sing-box-tray/internal/i18n"
+	"github.com/Be1zebub/sing-box-tray-runner/internal/appicon"
+	"github.com/Be1zebub/sing-box-tray-runner/internal/config"
+	"github.com/Be1zebub/sing-box-tray-runner/internal/i18n"
 )
 
 var (

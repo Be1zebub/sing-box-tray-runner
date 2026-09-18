@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zelgray/sing-box-tray/internal/config"
+	"github.com/Be1zebub/sing-box-tray-runner/internal/config"
 )
 
 // writeFixture writes a minimal sing-box config whose only inbound is not a

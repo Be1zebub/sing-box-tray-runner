@@ -9,7 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/zelgray/sing-box-tray/internal/config"
+	"github.com/Be1zebub/sing-box-tray-runner/internal/config"
 )
 
 // InjectTUN reads the sing-box config at sbConfigPath and strips any inbound

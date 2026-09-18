@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/zelgray/sing-box-tray/assets"
+	"github.com/Be1zebub/sing-box-tray-runner/assets"
 )
 
 const trayConfigFile = "tray-config.json"

@@ -13,8 +13,8 @@ import (
 	"github.com/lxn/win"
 	"golang.org/x/sys/windows"
 
-	"github.com/zelgray/sing-box-tray/internal/appicon"
-	"github.com/zelgray/sing-box-tray/internal/i18n"
+	"github.com/Be1zebub/sing-box-tray-runner/internal/appicon"
+	"github.com/Be1zebub/sing-box-tray-runner/internal/i18n"
 )
 
 var (

@@ -9,7 +9,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
-	"github.com/zelgray/sing-box-tray/assets"
+	"github.com/Be1zebub/sing-box-tray-runner/assets"
 )
 
 type Lang string

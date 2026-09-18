@@ -13,7 +13,7 @@ $env:CGO_ENABLED = "0"
 
 $LdFlags = "-H windowsgui -s -w"
 if ($env:VERSION) {
-	$LdFlags += " -X github.com/zelgray/sing-box-tray/internal/version.Version=$env:VERSION"
+	$LdFlags += " -X github.com/Be1zebub/sing-box-tray-runner/internal/version.Version=$env:VERSION"
 }
 
 go build -ldflags="$LdFlags" -o $Output .
