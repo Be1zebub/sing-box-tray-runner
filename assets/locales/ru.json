@@ -12,6 +12,8 @@
   "mode_system_proxy": "Системный прокси",
   "mode_tun": "TUN (требует прав администратора)",
   "menu_config": "Конфиг",
+  "menu_open_config_file": "Открыть файл конфига",
+  "menu_open_config_folder": "Открыть папку конфигов",
   "menu_autostart": "Автозапуск",
   "menu_autostart_tip": "Запускать при входе в Windows",
   "menu_view_logs": "Просмотр логов",

@@ -6,7 +6,7 @@
   "system_proxy_inbound": "",
   "autostart": false,
   "start_on_launch": false,
-  "default_mode": "system_proxy",
+  "default_mode": "tun",
   "log_lines": 200,
   "language": "auto",
   "system_proxy": {

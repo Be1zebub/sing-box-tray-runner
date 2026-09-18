@@ -51,6 +51,9 @@ const (
 var (
 	user32     = windows.NewLazySystemDLL("user32.dll")
 	procMsgBox = user32.NewProc("MessageBoxW")
+
+	shell32       = windows.NewLazySystemDLL("shell32.dll")
+	procShellExec = shell32.NewProc("ShellExecuteW")
 )
 
 type menuItems struct {
@@ -66,6 +69,9 @@ type menuItems struct {
 	config      *systray.MenuItem
 	configItems []*systray.MenuItem
 	configNames []string
+
+	openConfigFile   *systray.MenuItem
+	openConfigFolder *systray.MenuItem
 
 	langAuto *systray.MenuItem
 	langEN   *systray.MenuItem
@@ -148,6 +154,8 @@ func (a *App) OnReady() {
 
 	mConfig := systray.AddMenuItem(a.strs.MenuConfig, "")
 	configItems, configNames := a.buildConfigItems(mConfig, a.cfg.ConfigDir)
+	mOpenConfigFile := systray.AddMenuItem(a.strs.MenuOpenConfigFile, "")
+	mOpenConfigFolder := systray.AddMenuItem(a.strs.MenuOpenConfigFolder, "")
 	systray.AddSeparator()
 
 	mLanguages := systray.AddMenuItem(languagesMenuTitle, "")
@@ -188,6 +196,9 @@ func (a *App) OnReady() {
 		config:      mConfig,
 		configItems: configItems,
 		configNames: configNames,
+
+		openConfigFile:   mOpenConfigFile,
+		openConfigFolder: mOpenConfigFolder,
 
 		langAuto: mLangAuto,
 		langEN:   mLangEN,
@@ -578,6 +589,34 @@ func (a *App) showAbout() {
 	aboutwin.Show(a.strs, appTitle, version.Version, repoURL)
 }
 
+// openActiveConfig opens the currently selected sing-box config in the user's
+// registered editor for .json files.
+func (a *App) openActiveConfig() {
+	a.shellOpen(a.cfg.ActiveConfigPath(), "open")
+}
+
+// openConfigDir opens the config folder in Explorer.
+func (a *App) openConfigDir() {
+	a.shellOpen(a.cfg.ConfigDir, "explore")
+}
+
+// shellOpen launches path through ShellExecuteW: verb "open" uses the file's
+// registered application, "explore" opens an Explorer window at a folder.
+// Failure is only logged — a stale path simply means nothing opens.
+func (a *App) shellOpen(path, verb string) {
+	verbPtr, _ := windows.UTF16PtrFromString(verb)
+	pathPtr, _ := windows.UTF16PtrFromString(path)
+	// SW_SHOWNORMAL = 1; ShellExecute returns a value > 32 on success.
+	ret, _, _ := procShellExec.Call(0,
+		uintptr(unsafe.Pointer(verbPtr)),
+		uintptr(unsafe.Pointer(pathPtr)),
+		0, 0, 1,
+	)
+	if ret <= 32 {
+		a.log("shell open failed (%s %s): %d", verb, path, ret)
+	}
+}
+
 // applyLanguage recomputes a.strs for langCode, retitles the menu, and
 // refreshes the dynamic tooltip/icon. Shared by the tray Languages submenu
 // and the Settings window's Save handler.
@@ -619,6 +658,8 @@ func (a *App) refreshMenuTexts() {
 	a.items.modeProxy.SetTitle(a.strs.ModeSystemProxy)
 	a.items.modeTUN.SetTitle(a.strs.ModeTUN)
 	a.items.config.SetTitle(a.strs.MenuConfig)
+	a.items.openConfigFile.SetTitle(a.strs.MenuOpenConfigFile)
+	a.items.openConfigFolder.SetTitle(a.strs.MenuOpenConfigFolder)
 	a.items.autostart.SetTitle(a.strs.MenuAutostart)
 	a.items.autostart.SetTooltip(a.strs.MenuAutostartTip)
 	a.items.viewLogs.SetTitle(a.strs.MenuViewLogs)
@@ -796,6 +837,10 @@ func (a *App) handleClicks() {
 			go a.switchMode(state.ModeSystemProxy)
 		case <-a.items.modeTUN.ClickedCh:
 			go a.switchMode(state.ModeTUN)
+		case <-a.items.openConfigFile.ClickedCh:
+			go a.openActiveConfig()
+		case <-a.items.openConfigFolder.ClickedCh:
+			go a.openConfigDir()
 		case <-a.items.langAuto.ClickedCh:
 			go a.switchLanguage("auto")
 		case <-a.items.langEN.ClickedCh:

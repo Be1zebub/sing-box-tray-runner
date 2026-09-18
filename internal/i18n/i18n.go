@@ -24,24 +24,26 @@ const (
 // notifications, Settings/Log window chrome). Log messages are deliberately
 // not covered here — they stay in English regardless of UI language.
 type Strings struct {
-	MenuSettings     string `json:"menu_settings"`
-	MenuSettingsTip  string `json:"menu_settings_tip"`
-	MenuStart        string `json:"menu_start"`
-	MenuStartTip     string `json:"menu_start_tip"`
-	MenuStop         string `json:"menu_stop"`
-	MenuStopTip      string `json:"menu_stop_tip"`
-	MenuRestart      string `json:"menu_restart"`
-	MenuRestartTip   string `json:"menu_restart_tip"`
-	MenuMode         string `json:"menu_mode"`
-	ModeOff          string `json:"mode_off"`
-	ModeSystemProxy  string `json:"mode_system_proxy"`
-	ModeTUN          string `json:"mode_tun"`
-	MenuConfig       string `json:"menu_config"`
-	MenuAutostart    string `json:"menu_autostart"`
-	MenuAutostartTip string `json:"menu_autostart_tip"`
-	MenuViewLogs     string `json:"menu_view_logs"`
-	MenuAbout        string `json:"menu_about"`
-	MenuExit         string `json:"menu_exit"`
+	MenuSettings         string `json:"menu_settings"`
+	MenuSettingsTip      string `json:"menu_settings_tip"`
+	MenuStart            string `json:"menu_start"`
+	MenuStartTip         string `json:"menu_start_tip"`
+	MenuStop             string `json:"menu_stop"`
+	MenuStopTip          string `json:"menu_stop_tip"`
+	MenuRestart          string `json:"menu_restart"`
+	MenuRestartTip       string `json:"menu_restart_tip"`
+	MenuMode             string `json:"menu_mode"`
+	ModeOff              string `json:"mode_off"`
+	ModeSystemProxy      string `json:"mode_system_proxy"`
+	ModeTUN              string `json:"mode_tun"`
+	MenuConfig           string `json:"menu_config"`
+	MenuOpenConfigFile   string `json:"menu_open_config_file"`
+	MenuOpenConfigFolder string `json:"menu_open_config_folder"`
+	MenuAutostart        string `json:"menu_autostart"`
+	MenuAutostartTip     string `json:"menu_autostart_tip"`
+	MenuViewLogs         string `json:"menu_view_logs"`
+	MenuAbout            string `json:"menu_about"`
+	MenuExit             string `json:"menu_exit"`
 
 	TooltipStopped    string `json:"tooltip_stopped"`
 	TooltipRunningFmt string `json:"tooltip_running_fmt"`

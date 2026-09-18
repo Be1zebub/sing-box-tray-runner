@@ -12,6 +12,8 @@
   "mode_system_proxy": "Системний проксі",
   "mode_tun": "TUN (потрібні права адміністратора)",
   "menu_config": "Конфіг",
+  "menu_open_config_file": "Відкрити файл конфігу",
+  "menu_open_config_folder": "Відкрити теку конфігів",
   "menu_autostart": "Автозапуск",
   "menu_autostart_tip": "Запускати під час входу в Windows",
   "menu_view_logs": "Перегляд логів",
